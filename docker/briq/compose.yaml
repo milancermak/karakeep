@@ -1,0 +1,80 @@
+# Use ./manage.sh so configuration and data live outside the source checkout.
+name: karakeep
+
+x-labels: &labels
+  io.karakeep.application: karakeep
+
+services:
+  app:
+    container_name: karakeep-app
+    hostname: karakeep-app
+    cgroup_parent: karakeep.slice
+    image: karakeep-local:${KARAKEEP_IMAGE_TAG:-unbuilt}
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+      target: aio
+      args:
+        SERVER_VERSION: ${KARAKEEP_IMAGE_TAG:-unbuilt}
+      labels:
+        <<: *labels
+        org.opencontainers.image.source: ${KARAKEEP_SOURCE_URL:-}
+        org.opencontainers.image.revision: ${KARAKEEP_SOURCE_REVISION:-unknown}
+        org.opencontainers.image.version: ${KARAKEEP_IMAGE_TAG:-unbuilt}
+    labels:
+      <<: *labels
+      io.karakeep.role: app
+      org.opencontainers.image.revision: ${KARAKEEP_SOURCE_REVISION:-unknown}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${KARAKEEP_HTTP_PORT:-3000}:3000"
+    volumes:
+      - ${KARAKEEP_RUNTIME_DIR:?Use manage.sh}/data:/data
+    environment:
+      DATA_DIR: /data
+      NEXTAUTH_URL: ${NEXTAUTH_URL:?Set NEXTAUTH_URL in the runtime .env}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?Generate the runtime secrets first}
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?Generate the runtime secrets first}
+      MEILI_ADDR: http://search:7700
+      BROWSER_WEB_URL: http://chrome:9222
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DISABLE_SIGNUPS: ${DISABLE_SIGNUPS:-false}
+    depends_on:
+      - search
+      - chrome
+
+  chrome:
+    container_name: karakeep-chrome
+    hostname: karakeep-chrome
+    cgroup_parent: karakeep.slice
+    image: ${KARAKEEP_CHROME_IMAGE:-ghcr.io/karakeep-app/karakeep-chrome:release}
+    labels:
+      <<: *labels
+      io.karakeep.role: chrome
+    restart: unless-stopped
+    init: true
+    command:
+      - --disable-gpu
+      - --disable-dev-shm-usage
+      - --hide-scrollbars
+      - --disable-blink-features=AutomationControlled
+      - --window-size=1440,900
+
+  search:
+    container_name: karakeep-search
+    hostname: karakeep-search
+    cgroup_parent: karakeep.slice
+    image: ${KARAKEEP_SEARCH_IMAGE:-getmeili/meilisearch:v1.41.0}
+    labels:
+      <<: *labels
+      io.karakeep.role: search
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?Generate the runtime secrets first}
+      MEILI_NO_ANALYTICS: "true"
+    volumes:
+      - ${KARAKEEP_RUNTIME_DIR:?Use manage.sh}/meilisearch:/meili_data
+
+networks:
+  default:
+    name: karakeep-network

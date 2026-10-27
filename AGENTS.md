@@ -2,6 +2,10 @@
 
 This document provides context about the Karakeep project for the different agents.
 
+Fork deployment and cross-machine development notes are in
+[`docker/briq/README.md`](docker/briq/README.md). Read them before changing the
+production deployment or working on fork-specific clients and integrations.
+
 ## Project Overview
 
 Karakeep is a monorepo project managed with Turborepo. It is a "read-it-later" bookmarking application with a focus on collecting and organizing information. The project is built with a modern tech stack, including:

@@ -23,7 +23,7 @@ registry.registerPath({
   method: "post",
   path: "/assets",
   description:
-    "Upload a binary file as a new asset. The uploaded asset can then be attached to a bookmark via the POST /bookmarks/{bookmarkId}/assets endpoint.",
+    "Upload a binary file as a new asset. The uploaded asset can then be attached to a bookmark via the POST /bookmarks/{bookmarkId}/assets endpoint. Send unsupported file formats with the multipart file part's Content-Type set to application/octet-stream; they are stored as download-only attachments. Recognized supported formats retain their detected content type.",
   summary: "Upload a new asset",
   tags: ["Assets"],
   security: [{ [BearerAuth.name]: [] }],
@@ -79,7 +79,7 @@ registry.registerPath({
   method: "get",
   path: "/assets/{assetId}",
   description:
-    "Download an asset's binary content. The response Content-Type header is set based on the asset's MIME type.",
+    "Download an asset's binary content. The response Content-Type header is set based on the asset's MIME type. Generic application/octet-stream assets include Content-Disposition: attachment.",
   summary: "Get a single asset",
   tags: ["Assets"],
   security: [{ [BearerAuth.name]: [] }],

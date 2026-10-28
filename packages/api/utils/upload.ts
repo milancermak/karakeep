@@ -72,8 +72,16 @@ export async function uploadAsset(
   if (fallbackType && supportedMimeTypes.has(fallbackType) && !detectedType) {
     return { error: "Unsupported asset type", status: 400 };
   }
-  const contentType =
+  let contentType =
     detectedType?.mime ?? fallbackType ?? "application/octet-stream";
+
+  // Generic clients opt in explicitly; unsupported formats are download-only.
+  if (
+    fallbackType === "application/octet-stream" &&
+    !SUPPORTED_UPLOAD_ASSET_TYPES.has(contentType)
+  ) {
+    contentType = "application/octet-stream";
+  }
 
   // Replace all non-ascii characters with underscores
   const fileName = data.name.replace(/[^\x20-\x7E]/g, "_");

@@ -25,6 +25,13 @@ export async function serveAsset(c: Context, assetId: string, userId: string) {
   // Default Headers
   c.header("Content-type", metadata.contentType);
   c.header("X-Content-Type-Options", "nosniff");
+  if (metadata.contentType === "application/octet-stream") {
+    const fileName = (metadata.fileName ?? "attachment").replace(
+      /[^\x20-\x7E]|["\\]/g,
+      "_",
+    );
+    c.header("Content-Disposition", `attachment; filename="${fileName}"`);
+  }
   c.header("Cache-Control", "private, max-age=31536000, immutable");
   c.header(
     "Content-Security-Policy",

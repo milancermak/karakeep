@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import type { BookmarkMetadata } from "@karakeep/shared/types/metadata";
 
 import type { DB } from "@karakeep/db";
 import type { importSessions } from "@karakeep/db/schema";
@@ -79,6 +80,7 @@ export class ImportSessionsService {
       title?: string;
       content?: string;
       note?: string;
+      metadata?: BookmarkMetadata;
       tags: string[];
       listIds: string[];
       sourceAddedAt?: Date;
@@ -111,6 +113,7 @@ export class ImportSessionsService {
         title: bookmark.title,
         content: bookmark.content,
         note: bookmark.note,
+        metadata: bookmark.metadata,
         tags: bookmark.tags,
         listIds: bookmark.listIds,
         sourceAddedAt: bookmark.sourceAddedAt,

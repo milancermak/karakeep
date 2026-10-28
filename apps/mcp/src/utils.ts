@@ -122,6 +122,7 @@ Source URL: ${bookmark.content.sourceUrl ?? ""}`;
   Embedding status: ${bookmark.embeddingStatus ?? ""}
   Summary: ${bookmark.summary ?? ""}
   Note: ${bookmark.note ?? ""}
+  Metadata: ${JSON.stringify(bookmark.metadata ?? {})}
   ${content}
   Tags: ${bookmark.tags.map((t) => t.name).join(", ")}
   Assets: ${assets}`;

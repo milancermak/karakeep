@@ -680,6 +680,13 @@
       "when": 1793202309644,
       "tag": "0096_rust_engine",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "6",
+      "when": 1793217370556,
+      "tag": "0097_bookmark_metadata",
+      "breakpoints": true
     }
   ]
 }

@@ -163,6 +163,10 @@ describe("Backups API", () => {
           type: "text",
           title: `Test Bookmark ${i + 1}`,
           text: `This is test bookmark number ${i + 1}`,
+          metadata: {
+            capture: { pageTitle: `Source page ${i + 1}` },
+            custom: { retained: true },
+          },
         },
       });
       expect(bookmark).toBeDefined();
@@ -293,6 +297,14 @@ describe("Backups API", () => {
     const firstBookmark = backupData.bookmarks[0];
     expect(firstBookmark).toHaveProperty("content");
     expect(firstBookmark.content).toHaveProperty("type");
+    expect(
+      backupData.bookmarks.find(
+        (b: { title: string }) => b.title === "Test Bookmark 1",
+      ).metadata,
+    ).toEqual({
+      capture: { pageTitle: "Source page 1" },
+      custom: { retained: true },
+    });
 
     // Validate lists in backup
     expect(backupData.lists).toBeDefined();

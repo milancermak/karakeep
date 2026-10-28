@@ -137,6 +137,10 @@ describe("Import Worker Tests", () => {
         type: "text" as const,
         title: "Text Full Metadata",
         content: "Text bookmark with all metadata fields.",
+        metadata: {
+          capture: { pageTitle: "Imported source title" },
+          custom: [1, true],
+        },
         note: "Complete text note",
         tags: ["complete", "text"],
         listIds: [parentList.id],
@@ -256,6 +260,13 @@ describe("Import Worker Tests", () => {
       (b) => b.content.type === "text",
     );
     expect(textBookmarks.length).toBe(5);
+    expect(
+      textBookmarks.find((bookmark) => bookmark.title === "Text Full Metadata")
+        ?.metadata,
+    ).toEqual({
+      capture: { pageTitle: "Imported source title" },
+      custom: [1, true],
+    });
 
     // Verify tags were created
     const { data: tagsResponse } = await client.GET("/tags", {});

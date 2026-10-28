@@ -71,6 +71,47 @@ describe("Bookmarks API", () => {
     expect(retrievedBookmark!.content.text).toBe("This is a test bookmark");
   });
 
+  it("preserves independent concurrent metadata patches and supports clearing", async () => {
+    const { data: bookmark } = await client.POST("/bookmarks", {
+      body: {
+        type: "text",
+        text: "Saved note",
+        metadata: { capture: { pageTitle: "Source title", method: "firefox" } },
+      },
+    });
+    assert(bookmark);
+    expect(bookmark.title).toBeNull();
+    const patches = await Promise.all([
+      client.PATCH("/bookmarks/{bookmarkId}", {
+        params: { path: { bookmarkId: bookmark.id } },
+        body: { metadata: { capture: { pageTitle: "Updated source title" } } },
+      }),
+      client.PATCH("/bookmarks/{bookmarkId}", {
+        params: { path: { bookmarkId: bookmark.id } },
+        body: { metadata: { custom: { enabled: true, values: [1, 2] } } },
+      }),
+    ]);
+    for (const result of patches) expect(result.response.status).toBe(200);
+    const { data: updated } = await client.PATCH("/bookmarks/{bookmarkId}", {
+      params: { path: { bookmarkId: bookmark.id } },
+      body: { note: "Annotation from an older client" },
+    });
+    expect(updated?.metadata).toEqual({
+      capture: { pageTitle: "Updated source title", method: "firefox" },
+      custom: { enabled: true, values: [1, 2] },
+    });
+    const { data: cleared } = await client.PATCH("/bookmarks/{bookmarkId}", {
+      params: { path: { bookmarkId: bookmark.id } },
+      body: { metadata: null },
+    });
+    expect(cleared?.metadata).toEqual({});
+    const { response } = await client.PATCH("/bookmarks/{bookmarkId}", {
+      params: { path: { bookmarkId: bookmark.id } },
+      body: { metadata: { oversized: "a".repeat(65536) } },
+    });
+    expect(response.status).toBe(400);
+  });
+
   it("should page through readable bookmark content and reject stale cursors", async () => {
     const firstParagraph = "a".repeat(80);
     const secondParagraph = "b".repeat(80);

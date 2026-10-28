@@ -1,5 +1,6 @@
 import { experimental_trpcMiddleware } from "@trpc/server";
 import { z } from "zod";
+import { zBookmarkMetadataSchema } from "@karakeep/shared/types/metadata";
 
 import {
   DEFAULT_NUM_IMPORT_SESSION_RESULTS_PER_PAGE,
@@ -97,6 +98,7 @@ export const importSessionsRouter = router({
               title: z.string().optional(),
               content: z.string().optional(),
               note: z.string().optional(),
+              metadata: zBookmarkMetadataSchema.optional(),
               tags: z.array(z.string()).default([]),
               listIds: z.array(z.string()).default([]),
               sourceAddedAt: z.date().optional(),

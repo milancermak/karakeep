@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { isAllowedBookmarkUrl } from "../utils/url";
 import { zCursorV2 } from "./pagination";
+import { zBookmarkMetadataSchema } from "./metadata";
 import { zAttachedByEnumSchema, zBookmarkTagSchema } from "./tags";
 
 export const MAX_BOOKMARK_TITLE_LENGTH = 1000;
@@ -195,6 +196,7 @@ export const zBareBookmarkSchema = z.object({
   summarizationStatus: z.enum(["success", "failure", "pending"]).nullable(),
   embeddingStatus: z.enum(["success", "failure", "pending"]).nullable(),
   note: z.string().nullish(),
+  metadata: zBookmarkMetadataSchema.optional(),
   summary: z.string().nullish(),
   source: zBookmarkSourceSchema.nullish(),
   userId: z.string(),
@@ -245,6 +247,11 @@ export const zNewBookmarkRequestSchema = z.intersection(
     archived: z.boolean().optional(),
     favourited: z.boolean().optional(),
     note: z.string().optional(),
+    metadata: zBookmarkMetadataSchema
+      .nullish()
+      .describe(
+        "Client metadata (64 KiB maximum). Objects merge recursively; arrays replace; null properties delete keys. Root null clears all metadata. Omit to preserve existing metadata when re-saving a link.",
+      ),
     summary: z.string().optional(),
     createdAt: z.coerce
       .date()
@@ -314,6 +321,11 @@ export const zUpdateBookmarksRequestSchema = z.object({
   favourited: z.boolean().optional(),
   summary: z.string().nullish(),
   note: z.string().optional(),
+  metadata: zBookmarkMetadataSchema
+    .nullish()
+    .describe(
+      "JSON Merge Patch for client metadata: objects merge, arrays replace, null properties delete keys, and root null clears. Omitted metadata is preserved.",
+    ),
   title: z.string().max(MAX_BOOKMARK_TITLE_LENGTH).nullish(),
   createdAt: z.coerce
     .date()

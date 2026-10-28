@@ -1,4 +1,5 @@
 import { MAX_LIST_NAME_LENGTH } from "../types/lists";
+import type { BookmarkMetadata } from "../types/metadata";
 import { ImportSource, ParsedImportFile, parseImportFile } from "./parsers";
 
 export interface ImportCounts {
@@ -14,6 +15,7 @@ export interface StagedBookmark {
   title?: string;
   content?: string;
   note?: string;
+  metadata?: BookmarkMetadata;
   tags: string[];
   listIds: string[];
   sourceAddedAt?: Date;
@@ -248,6 +250,7 @@ export async function importBookmarksFromFile(
       title: bookmark.title,
       content: textContent,
       note: bookmark.notes,
+      metadata: bookmark.metadata,
       tags: bookmark.tags ?? [],
       listIds,
       sourceAddedAt: bookmark.addDate

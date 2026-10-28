@@ -45,6 +45,10 @@ describe("Crawler Tests", () => {
       body: {
         type: "link",
         url: "http://nginx:80/hello.html",
+        metadata: {
+          capture: { pageTitle: "Title saved by Firefox" },
+          custom: { retained: true },
+        },
       },
     });
     assert(bookmark);
@@ -62,6 +66,10 @@ describe("Crawler Tests", () => {
     expect(bookmark.content.htmlContent).toContain("Hello World");
     expect(bookmark.content.title).toContain("My test title");
     expect(bookmark.content.url).toBe("http://nginx:80/hello.html");
+    expect(bookmark.metadata).toEqual({
+      capture: { pageTitle: "Title saved by Firefox" },
+      custom: { retained: true },
+    });
     expect(
       bookmark.assets.find((a) => a.assetType === "screenshot"),
     ).toBeDefined();

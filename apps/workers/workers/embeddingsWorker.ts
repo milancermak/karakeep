@@ -12,6 +12,7 @@ import {
   zEmbeddingsRequestSchema,
 } from "@karakeep/shared-server";
 import serverConfig from "@karakeep/shared/config";
+import { bookmarkMetadataSearchText } from "@karakeep/shared/types/metadata";
 import { EmbeddingClientFactory } from "@karakeep/shared/inference";
 import logger from "@karakeep/shared/logger";
 import {
@@ -268,6 +269,11 @@ async function buildEmbeddingText(
 
   appendProfileField(parts, "Summary", bookmark.summary);
   appendProfileField(parts, "Note", bookmark.note);
+  appendProfileField(
+    parts,
+    "Source metadata",
+    bookmarkMetadataSearchText(bookmark.metadata),
+  );
 
   let rawContent: string | null = null;
 

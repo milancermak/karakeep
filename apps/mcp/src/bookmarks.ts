@@ -1,5 +1,6 @@
 import { CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import { zBookmarkMetadataSchema } from "@karakeep/shared/types/metadata";
 
 import { karakeepClient, registerTool, turndownService } from "./shared";
 import { compactBookmark, compactList, toMcpToolError } from "./utils";
@@ -181,6 +182,15 @@ registerTool(
         .enum(["link", "text"])
         .describe(`The type of bookmark to create.`),
       title: z.string().optional().describe(`The title of the bookmark`),
+      note: z
+        .string()
+        .optional()
+        .describe("Your annotation on the saved item."),
+      metadata: zBookmarkMetadataSchema
+        .optional()
+        .describe(
+          "Client metadata such as capture.pageTitle. Objects merge recursively; null properties delete keys.",
+        ),
       content: z
         .string()
         .describe(
@@ -188,18 +198,22 @@ registerTool(
         ),
     }),
   },
-  async ({ title, type, content }): Promise<CallToolResult> => {
+  async ({ title, type, content, note, metadata }): Promise<CallToolResult> => {
     const res = await karakeepClient.POST(`/bookmarks`, {
       body:
         type === "link"
           ? {
               type: "link",
               title,
+              note,
+              metadata,
               url: content,
             }
           : {
               type: "text",
               title,
+              note,
+              metadata,
               text: content,
             },
     });
@@ -229,6 +243,11 @@ registerTool(
         .optional()
         .describe(`The bookmark's user-set title. Pass null to clear it.`),
       note: z.string().optional().describe(`A free-form note on the bookmark.`),
+      metadata: zBookmarkMetadataSchema
+        .nullish()
+        .describe(
+          "JSON Merge Patch: objects merge recursively, arrays replace, null properties remove keys. Root null clears all metadata. Omitted metadata is preserved.",
+        ),
       summary: z
         .string()
         .nullable()

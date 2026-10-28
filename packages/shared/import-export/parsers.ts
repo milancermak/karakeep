@@ -6,6 +6,8 @@ import { parse } from "csv-parse/sync";
 import { z } from "zod";
 
 import { BookmarkTypes } from "../types/bookmarks";
+import type { BookmarkMetadata } from "../types/metadata";
+import { mergeBookmarkMetadata } from "../types/metadata";
 import { zExportSchema } from "./exporters";
 
 export type ImportSource =
@@ -29,6 +31,7 @@ export interface ParsedBookmark {
   tags: string[];
   addDate?: number;
   notes?: string;
+  metadata?: BookmarkMetadata;
   archived?: boolean;
   paths: string[][];
   // Optional list IDs from the source file (used with top-level `lists`).
@@ -223,6 +226,7 @@ function parseKarakeepBookmarkFile(textContent: string): ParsedImportFile {
       tags: bookmark.tags,
       addDate: bookmark.createdAt,
       notes: bookmark.note ?? undefined,
+      metadata: bookmark.metadata,
       archived: bookmark.archived,
       paths: [],
       listExternalIds: (bookmark.lists ?? []).filter((listId) =>
@@ -621,6 +625,11 @@ function deduplicateBookmarks(bookmarks: ParsedBookmark[]): ParsedBookmark[] {
       if (deduplicatedBookmarksMap.has(url)) {
         const existing = deduplicatedBookmarksMap.get(url)!;
         // Merge tags
+        if (bookmark.metadata)
+          existing.metadata = mergeBookmarkMetadata(
+            existing.metadata,
+            bookmark.metadata,
+          );
         existing.tags = [...new Set([...existing.tags, ...bookmark.tags])];
         // Merge paths
         existing.paths = [...existing.paths, ...bookmark.paths];

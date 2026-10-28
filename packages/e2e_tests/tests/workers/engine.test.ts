@@ -125,6 +125,94 @@ describe("Rust engine contract", () => {
     expect(workers).toBe(0);
   }, 180000);
 
+  it("refreshes retrieval for descriptive metadata and notes without repeating extraction or tagging", async () => {
+    const bookmark = await textBookmark();
+    const params = { path: { bookmarkId: bookmark.id } };
+    async function settle() {
+      await waitUntil(
+        async () => {
+          const [row] = query(
+            "SELECT count(*) n FROM work_jobs WHERE subject=? AND state IN ('pending','running')",
+            [bookmark.id],
+          ) as { n: number }[];
+          return row.n === 0;
+        },
+        "Metadata processing settles",
+        120000,
+      );
+    }
+    function counts() {
+      return query(
+        "SELECT kind,count(*) n FROM work_jobs WHERE subject=? GROUP BY kind ORDER BY kind",
+        [bookmark.id],
+      ) as { kind: string; n: number }[];
+    }
+    const initial = counts();
+    const before = initial.find((row) => row.kind === "embedding")!.n;
+    const metadata = {
+      capture: { pageTitle: "QuasarNimbusHosting" },
+      custom: { retained: [true, 2] },
+    };
+    // A direct DB mutation proves the durable outbox captures metadata changes
+    // even without an application enqueue or a socket notification.
+    run("UPDATE bookmarks SET metadata=? WHERE id=?", [
+      JSON.stringify(metadata),
+      bookmark.id,
+    ]);
+    await waitUntil(
+      async () => {
+        const { data } = await client.GET("/bookmarks/search", {
+          params: { query: { q: "QuasarNimbusHosting", searchMode: "fts" } },
+        });
+        return data?.bookmarks.some((item) => item.id === bookmark.id) ?? false;
+      },
+      "Source metadata enters keyword search",
+      120000,
+    );
+    await settle();
+    expect(counts().find((row) => row.kind === "embedding")!.n).toBeGreaterThan(
+      before,
+    );
+    const afterDescription = counts().find(
+      (row) => row.kind === "embedding",
+    )!.n;
+    const { data: operationalPatch } = await client.PATCH(
+      "/bookmarks/{bookmarkId}",
+      {
+        params,
+        body: {
+          metadata: {
+            capture: { status: "complete" },
+            custom: { hidden: "OperationalZephyrToken" },
+          },
+        },
+      },
+    );
+    expect(operationalPatch?.metadata).toMatchObject(metadata);
+    await settle();
+    expect(counts().find((row) => row.kind === "embedding")!.n).toBe(
+      afterDescription,
+    );
+    const { data: hiddenSearch } = await client.GET("/bookmarks/search", {
+      params: { query: { q: "OperationalZephyrToken", searchMode: "fts" } },
+    });
+    expect(hiddenSearch?.bookmarks).toEqual([]);
+    const { response } = await client.PATCH("/bookmarks/{bookmarkId}", {
+      params,
+      body: { note: "My new note about agent hosting" },
+    });
+    expect(response.status).toBe(200);
+    await settle();
+    expect(counts().find((row) => row.kind === "embedding")!.n).toBeGreaterThan(
+      afterDescription,
+    );
+    expect(
+      counts().filter((row) => ["ingest", "asset", "ai"].includes(row.kind)),
+    ).toEqual(
+      initial.filter((row) => ["ingest", "asset", "ai"].includes(row.kind)),
+    );
+  }, 180000);
+
   it("applies rules without recursively firing rules for their own tag actions", async () => {
     const tag = await api.tags.create.mutate({ name: "Added by a rule" });
     await api.rules.create.mutate({

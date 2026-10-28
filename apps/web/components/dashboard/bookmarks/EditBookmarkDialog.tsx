@@ -48,11 +48,15 @@ import { getBookmarkTitle } from "@karakeep/shared/utils/bookmarkUtils";
 
 import { BookmarkTagsEditor } from "./BookmarkTagsEditor";
 
-const formSchema = zUpdateBookmarksRequestSchema.extend({
-  createdAt: z.date().optional(),
-  datePublished: z.date().nullish(),
-  dateModified: z.date().nullish(),
-});
+// This dialog edits only its visible fields. Client metadata is patched
+// separately and must not become part of a stale form snapshot.
+const formSchema = zUpdateBookmarksRequestSchema
+  .omit({ metadata: true })
+  .extend({
+    createdAt: z.date().optional(),
+    datePublished: z.date().nullish(),
+    dateModified: z.date().nullish(),
+  });
 type BookmarkFormValues = z.infer<typeof formSchema>;
 
 export function EditBookmarkDialog({

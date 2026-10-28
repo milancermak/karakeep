@@ -143,6 +143,10 @@ describe("Assets API", () => {
         title: "Test Asset Bookmark",
         assetType: "pdf",
         assetId: uploadResponse.assetId,
+        metadata: {
+          capture: { pageTitle: "Original PDF source" },
+          custom: { retained: true },
+        },
       },
     });
 
@@ -164,6 +168,10 @@ describe("Assets API", () => {
     expect(retrievedBookmark).toBeDefined();
     assert(retrievedBookmark!.content.type === "asset");
     expect(retrievedBookmark!.content.assetId).toBe(uploadResponse.assetId);
+    expect(retrievedBookmark!.metadata).toEqual({
+      capture: { pageTitle: "Original PDF source" },
+      custom: { retained: true },
+    });
   });
 
   it("should delete asset when deleting bookmark", async () => {

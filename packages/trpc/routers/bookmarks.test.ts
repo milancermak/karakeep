@@ -83,6 +83,116 @@ describe("Bookmark Routes", () => {
     expect(res.content.type).toEqual(BookmarkTypes.LINK);
   });
 
+  test<CustomTestContext>("preserves metadata across nested patches, link re-saves and older clients", async ({
+    apiCallers,
+  }) => {
+    const api = apiCallers[0].bookmarks;
+    const created = await api.createBookmark({
+      type: BookmarkTypes.LINK,
+      url: "https://example.com/client-metadata",
+      metadata: {
+        capture: { pageTitle: "Original page", method: "firefox" },
+        custom: { retained: true },
+      },
+    });
+    expect(created.title).toBeNull();
+    await api.createBookmark({
+      type: BookmarkTypes.LINK,
+      url: "https://example.com/client-metadata",
+      metadata: { capture: { pageTitle: "Updated page" } },
+    });
+    await api.createBookmark({
+      type: BookmarkTypes.LINK,
+      url: "https://example.com/client-metadata",
+    });
+    await api.updateBookmark({ bookmarkId: created.id, note: "My annotation" });
+    expect(
+      (await api.getBookmark({ bookmarkId: created.id })).metadata,
+    ).toEqual({
+      capture: { pageTitle: "Updated page", method: "firefox" },
+      custom: { retained: true },
+    });
+    const patched = await api.updateBookmark({
+      bookmarkId: created.id,
+      metadata: { capture: { pageTitle: null }, custom: { values: [1, 2] } },
+    });
+    expect(patched.metadata).toEqual({
+      capture: { method: "firefox" },
+      custom: { retained: true, values: [1, 2] },
+    });
+    expect((await api.getBookmarks({})).bookmarks[0].metadata).toEqual(
+      patched.metadata,
+    );
+    expect(
+      (await api.updateBookmark({ bookmarkId: created.id, metadata: null }))
+        .metadata,
+    ).toEqual({});
+  });
+
+  test<CustomTestContext>("validates accumulated metadata and rejects writes by other users", async ({
+    apiCallers,
+  }) => {
+    const api = apiCallers[0].bookmarks;
+    const bookmark = await api.createBookmark({
+      type: BookmarkTypes.TEXT,
+      text: "A note without a title",
+      metadata: { first: "a".repeat(40000) },
+    });
+    await expect(
+      api.updateBookmark({
+        bookmarkId: bookmark.id,
+        metadata: { second: "b".repeat(40000) },
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(
+      (await api.getBookmark({ bookmarkId: bookmark.id })).metadata,
+    ).toEqual(bookmark.metadata);
+    await expect(
+      apiCallers[1].bookmarks.updateBookmark({
+        bookmarkId: bookmark.id,
+        metadata: { first: null },
+      }),
+    ).rejects.toThrow();
+  });
+
+  test<CustomTestContext>("keeps client metadata private when sharing a bookmark", async ({
+    apiCallers,
+    unauthedAPICaller,
+  }) => {
+    const owner = apiCallers[0];
+    const reader = apiCallers[1];
+    const bookmark = await owner.bookmarks.createBookmark({
+      type: BookmarkTypes.TEXT,
+      text: "Shared content",
+      note: "Private note",
+      metadata: { private: { context: "Personal capture data" } },
+    });
+    const list = await owner.lists.create({
+      name: "Shared metadata test",
+      icon: "📚",
+      type: "manual",
+    });
+    await owner.lists.addToList({ listId: list.id, bookmarkId: bookmark.id });
+    const { invitationId } = await owner.lists.addCollaborator({
+      listId: list.id,
+      email: (await reader.users.whoami()).email!,
+      role: "viewer",
+    });
+    await reader.lists.acceptInvitation({ invitationId });
+    expect(
+      await reader.bookmarks.getBookmark({ bookmarkId: bookmark.id }),
+    ).toMatchObject({ note: null, metadata: {} });
+    expect(
+      (await owner.bookmarks.getBookmark({ bookmarkId: bookmark.id })).metadata,
+    ).toEqual(bookmark.metadata);
+    await owner.lists.edit({ listId: list.id, public: true });
+    const publicList =
+      await unauthedAPICaller.publicBookmarks.getPublicBookmarksInList({
+        listId: list.id,
+      });
+    expect(publicList.bookmarks[0]).not.toHaveProperty("metadata");
+  });
+
   test<CustomTestContext>("get readable bookmark content as markdown or text", async ({
     apiCallers,
     db,

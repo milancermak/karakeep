@@ -2,6 +2,8 @@ import { eq } from "drizzle-orm";
 import { db } from "@karakeep/db";
 import { bookmarks } from "@karakeep/db/schema";
 import serverConfig from "@karakeep/shared/config";
+import { bookmarkMetadataSearchText } from "@karakeep/shared/types/metadata";
+import type { BookmarkMetadata } from "@karakeep/shared/types/metadata";
 import { digest } from "@karakeep/shared-server/work/ledger";
 import type { WorkJob } from "@karakeep/shared-server/work/ledger";
 import { workLedger } from "@karakeep/shared-server/work/runtime";
@@ -43,6 +45,7 @@ export function fingerprint(b: Snapshot): string {
     source: sourceFingerprint(b),
     title: b.title,
     note: b.note,
+    metadataText: bookmarkMetadataSearchText(b.metadata),
     autoTagging: b.user.autoTaggingEnabled,
     autoSummary: b.user.autoSummarizationEnabled,
     tagStyle: b.user.tagStyle,
@@ -166,6 +169,12 @@ export async function processDomainEvent(job: WorkJob): Promise<void> {
     operation: string;
     tagId?: string;
     listId?: string;
+    previousContext?: {
+      title: string | null;
+      note: string | null;
+      summary: string | null;
+      metadata: BookmarkMetadata;
+    };
   };
   const ledger = workLedger();
   if (data.operation === "import") {
@@ -236,6 +245,26 @@ export async function processDomainEvent(job: WorkJob): Promise<void> {
         }
         if (data.operation === "created" || data.operation === "edited")
           queueWebhook(b.id, b.userId, data.operation);
+        if (
+          data.operation === "edited" &&
+          serverConfig.embedding.enableAutoIndexing
+        ) {
+          const old = data.previousContext;
+          if (
+            !old ||
+            old.title !== b.title ||
+            old.note !== b.note ||
+            old.summary !== b.summary ||
+            bookmarkMetadataSearchText(old.metadata) !==
+              bookmarkMetadataSearchText(b.metadata)
+          ) {
+            ledger.enqueue("embedding", {
+              bookmarkId: b.id,
+              type: "embed",
+              runTaggingOnComplete: false,
+            });
+          }
+        }
         ledger.enqueue("publish", { bookmarkId: b.id, type: "index" });
       }
       ledger.finish(job.id, job.token!);

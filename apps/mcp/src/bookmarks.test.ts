@@ -26,6 +26,22 @@ import {
   searchBookmarksHandler,
 } from "./bookmarks";
 
+// Capture registration once; mock call history is cleared between tests.
+const createBookmark = mockTool.mock.calls.find(
+  ([name]) => name === "create-bookmark",
+)![2] as (input: {
+  type: "link" | "text";
+  content: string;
+  note: string;
+  metadata: { capture: { pageTitle: string } };
+}) => Promise<CallToolResult>;
+const updateBookmark = mockTool.mock.calls.find(
+  ([name]) => name === "update-bookmark",
+)![2] as (input: {
+  bookmarkId: string;
+  metadata: { capture: { pageTitle: null } } | null;
+}) => Promise<CallToolResult>;
+
 const textOf = (result: CallToolResult): string => {
   const first = result.content[0];
   if (!first || first.type !== "text") {
@@ -79,6 +95,46 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+});
+
+describe("metadata tools", () => {
+  it.each(["link", "text"] as const)(
+    "forwards note and metadata when creating a %s bookmark",
+    async (type) => {
+      const metadata = { capture: { pageTitle: "Source page title" } };
+      mockClient.POST.mockResolvedValueOnce({
+        data: { ...sampleBookmark, metadata },
+      });
+      const result = await createBookmark({
+        type,
+        content: type === "link" ? "https://example.com" : "Saved text",
+        note: "My annotation",
+        metadata,
+      });
+      expect(mockClient.POST).toHaveBeenCalledWith("/bookmarks", {
+        body: expect.objectContaining({
+          type,
+          note: "My annotation",
+          metadata,
+        }),
+      });
+      expect(textOf(result)).toContain(JSON.stringify(metadata));
+    },
+  );
+  it.each([{ capture: { pageTitle: null } }, null])(
+    "forwards metadata deletion patches without dropping nulls: %j",
+    async (metadata) => {
+      mockClient.PATCH.mockResolvedValueOnce({ data: sampleBookmark });
+      mockClient.GET.mockResolvedValueOnce({
+        data: { ...sampleBookmark, metadata: {} },
+      });
+      await updateBookmark({ bookmarkId: sampleBookmark.id, metadata });
+      expect(mockClient.PATCH).toHaveBeenCalledWith("/bookmarks/{bookmarkId}", {
+        params: { path: { bookmarkId: sampleBookmark.id } },
+        body: { metadata },
+      });
+    },
+  );
 });
 
 describe("search-bookmarks", () => {

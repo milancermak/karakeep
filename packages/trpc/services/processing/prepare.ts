@@ -14,6 +14,7 @@ import type { PreparedWork } from "@karakeep/shared-server/work/contracts";
 import type { WorkJob } from "@karakeep/shared-server/work/ledger";
 import { workLedger } from "@karakeep/shared-server/work/runtime";
 import config from "@karakeep/shared/config";
+import { bookmarkMetadataSearchText } from "@karakeep/shared/types/metadata";
 import {
   buildImagePrompt,
   constructTextTaggingPrompt,
@@ -330,6 +331,7 @@ export async function prepareJob(job: WorkJob): Promise<PreparedWork> {
             .join(", ")}`,
           `Summary: ${b.summary ?? ""}`,
           `Note: ${b.note ?? ""}`,
+          `Source metadata: ${bookmarkMetadataSearchText(b.metadata)}`,
           `URL: ${b.link?.url ?? b.text?.sourceUrl ?? b.asset?.sourceUrl ?? ""}`,
           `Description: ${b.link?.description ?? ""}`,
           `Author: ${b.link?.author ?? ""}`,
@@ -365,6 +367,7 @@ export async function prepareJob(job: WorkJob): Promise<PreparedWork> {
               datePublished: b.link?.datePublished,
               dateModified: b.link?.dateModified,
               note: b.note,
+              clientMetadataText: bookmarkMetadataSearchText(b.metadata),
               summary: b.summary,
               title: b.title,
               createdAt: b.createdAt.toISOString(),

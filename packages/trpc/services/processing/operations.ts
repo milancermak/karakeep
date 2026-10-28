@@ -165,6 +165,7 @@ async function importBatch(job: WorkJob) {
         title:
           item.title?.trim().slice(0, MAX_BOOKMARK_TITLE_LENGTH) || undefined,
         note: item.note ?? undefined,
+        metadata: item.metadata ?? undefined,
         createdAt: item.sourceAddedAt ?? undefined,
         archived: item.archived ?? false,
         crawlPriority: "low" as const,

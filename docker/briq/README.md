@@ -117,3 +117,8 @@ saved assets, search data and private runtime configuration consistently. Keep
 the prior application and Chrome image selection and Compose file together;
 see the engine document for rollback steps and pending-work handling. An image
 rollback alone cannot undo database migrations.
+
+## Bookmark metadata and Firefox client development
+
+See [`docs/bookmark-metadata.md`](../../docs/bookmark-metadata.md) for the fork's
+client metadata field, merge rules, retrieval projection and MacBook/MCP handoff.

@@ -846,6 +846,9 @@ export interface components {
       /** @enum {string|null} */
       embeddingStatus: "success" | "failure" | "pending" | null;
       note?: string | null;
+      metadata?: {
+        [key: string]: unknown;
+      };
       summary?: string | null;
       /** @enum {string|null} */
       source?:
@@ -1145,6 +1148,10 @@ export interface operations {
           archived?: boolean;
           favourited?: boolean;
           note?: string;
+          /** @description Client metadata (64 KiB maximum). Objects merge recursively; arrays replace; null properties delete keys. Root null clears all metadata. Omit to preserve existing metadata when re-saving a link. */
+          metadata?: {
+            [key: string]: unknown;
+          } | null;
           summary?: string;
           /** Format: date-time */
           createdAt?: string;
@@ -1404,6 +1411,10 @@ export interface operations {
           favourited?: boolean;
           summary?: string | null;
           note?: string;
+          /** @description JSON Merge Patch for client metadata: objects merge, arrays replace, null properties delete keys, and root null clears. Omitted metadata is preserved. */
+          metadata?: {
+            [key: string]: unknown;
+          } | null;
           title?: string | null;
           /** Format: date-time */
           createdAt?: string;
@@ -1446,6 +1457,9 @@ export interface operations {
             /** @enum {string|null} */
             embeddingStatus: "success" | "failure" | "pending" | null;
             note?: string | null;
+            metadata?: {
+              [key: string]: unknown;
+            };
             summary?: string | null;
             /** @enum {string|null} */
             source?:
@@ -1584,6 +1598,9 @@ export interface operations {
             /** @enum {string|null} */
             embeddingStatus: "success" | "failure" | "pending" | null;
             note?: string | null;
+            metadata?: {
+              [key: string]: unknown;
+            };
             summary?: string | null;
             /** @enum {string|null} */
             source?:

@@ -181,6 +181,12 @@
             "type": "string",
             "nullable": true
           },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
           "summary": {
             "type": "string",
             "nullable": true
@@ -1055,6 +1061,14 @@
                       "note": {
                         "type": "string"
                       },
+                      "metadata": {
+                        "type": "object",
+                        "nullable": true,
+                        "additionalProperties": {
+                          "nullable": true
+                        },
+                        "description": "Client metadata (64 KiB maximum). Objects merge recursively; arrays replace; null properties delete keys. Root null clears all metadata. Omit to preserve existing metadata when re-saving a link."
+                      },
                       "summary": {
                         "type": "string"
                       },
@@ -1532,6 +1546,14 @@
                   "note": {
                     "type": "string"
                   },
+                  "metadata": {
+                    "type": "object",
+                    "nullable": true,
+                    "additionalProperties": {
+                      "nullable": true
+                    },
+                    "description": "JSON Merge Patch for client metadata: objects merge, arrays replace, null properties delete keys, and root null clears. Omitted metadata is preserved."
+                  },
                   "title": {
                     "type": "string",
                     "nullable": true,
@@ -1647,6 +1669,12 @@
                     "note": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "nullable": true
+                      }
                     },
                     "summary": {
                       "type": "string",
@@ -1905,6 +1933,12 @@
                     "note": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "nullable": true
+                      }
                     },
                     "summary": {
                       "type": "string",

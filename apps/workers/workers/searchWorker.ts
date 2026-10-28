@@ -11,6 +11,7 @@ import {
   zSearchIndexingRequestSchema,
 } from "@karakeep/shared-server";
 import serverConfig from "@karakeep/shared/config";
+import { bookmarkMetadataSearchText } from "@karakeep/shared/types/metadata";
 import logger from "@karakeep/shared/logger";
 import { DequeuedJob, getQueueClient } from "@karakeep/shared/queueing";
 import {
@@ -112,6 +113,7 @@ async function runIndex(
       : {}),
     ...(bookmark.text ? { content: bookmark.text.text } : {}),
     note: bookmark.note,
+    clientMetadataText: bookmarkMetadataSearchText(bookmark.metadata),
     summary: bookmark.summary,
     title: bookmark.title,
     createdAt: bookmark.createdAt.toISOString(),

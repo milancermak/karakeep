@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { BookmarkTypes, ZBookmark } from "../types/bookmarks";
-import { toNetscapeFormat } from "./exporters";
+import { toNetscapeFormat, toExportFormat } from "./exporters";
+import { parseImportFile } from "./parsers";
 
 function linkBookmark(
   url: string,
@@ -36,6 +37,19 @@ function linkBookmark(
 }
 
 describe("toNetscapeFormat", () => {
+  it("preserves client metadata through a JSON export and import", () => {
+    const bookmark = linkBookmark("https://example.com/captured");
+    bookmark.metadata = {
+      capture: { pageTitle: "Source title", method: "firefox" },
+      custom: { values: [1, true, "text"] },
+    };
+    const exported = toExportFormat(bookmark);
+    const parsed = parseImportFile(
+      "karakeep",
+      JSON.stringify({ bookmarks: [exported] }),
+    );
+    expect(parsed.bookmarks[0].metadata).toEqual(bookmark.metadata);
+  });
   it("exports http and https links", () => {
     const out = toNetscapeFormat([
       linkBookmark("https://example.com/page"),

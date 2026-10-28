@@ -11,6 +11,7 @@ import {
   zCreateImportSessionRequestSchema,
   ZImportSession,
 } from "@karakeep/shared/types/importSessions";
+import type { BookmarkMetadata } from "@karakeep/shared/types/metadata";
 
 type ImportSessionRow = typeof importSessions.$inferSelect;
 type StagingBookmarkRow = typeof importStagingBookmarks.$inferSelect;
@@ -77,6 +78,7 @@ export class ImportSessionsRepo {
       title?: string;
       content?: string;
       note?: string;
+      metadata?: BookmarkMetadata;
       tags: string[];
       listIds: string[];
       sourceAddedAt?: Date;

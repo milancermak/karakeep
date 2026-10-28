@@ -14,6 +14,7 @@ export const zBookmarkSearchDocument = z.object({
   fileName: z.string().nullish(),
   createdAt: z.string().nullish(),
   note: z.string().nullish(),
+  clientMetadataText: z.string().nullish(),
   summary: z.string().nullish(),
   tags: z.array(z.string()).default([]),
   publisher: z.string().nullish(),

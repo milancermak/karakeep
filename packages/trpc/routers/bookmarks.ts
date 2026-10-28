@@ -62,6 +62,12 @@ import {
   zUpdateBookmarksRequestSchema,
 } from "@karakeep/shared/types/bookmarks";
 import type { ZBookmarkTags } from "@karakeep/shared/types/tags";
+import {
+  mergeBookmarkMetadata,
+  bookmarkMetadataSearchText,
+} from "@karakeep/shared/types/metadata";
+import { rustEngineEnabled } from "@karakeep/shared-server/work/runtime";
+import type { BookmarkMetadata } from "@karakeep/shared/types/metadata";
 import { ANCHOR_TEXT_MAX_LENGTH } from "@karakeep/shared/utils/reading-progress-dom";
 import { normalizeTagName } from "@karakeep/shared/utils/tag";
 import { getVectorStoreClient } from "@karakeep/shared/vectorStore";
@@ -84,6 +90,21 @@ import { BareBookmark, Bookmark } from "../models/bookmarks";
 import { WebhooksService } from "../models/webhooks.service";
 
 const bookmarksProcedure = createScopedAuthedProcedure("bookmarks");
+
+function applyMetadataPatch(
+  current: BookmarkMetadata | undefined,
+  patch: BookmarkMetadata | null,
+) {
+  try {
+    return mergeBookmarkMetadata(current, patch);
+  } catch (cause) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Invalid or oversized merged metadata",
+      cause,
+    });
+  }
+}
 const HYBRID_CANDIDATES_PER_SOURCE = MAX_NUM_BOOKMARKS_PER_PAGE;
 /**
  * Vector search always returns as many hits as it's asked for, so without a
@@ -289,25 +310,56 @@ export const bookmarksAppRouter = router({
           // of the list. The rest of the metadata is only overwritten when the
           // caller actually supplied it, so a bare re-save doesn't wipe the
           // title or the note that are already on the existing bookmark.
-          const resaved = {
-            createdAt: input.createdAt ?? now,
-            archived: input.archived ?? false,
-            ...(input.title !== undefined ? { title: input.title } : {}),
-            ...(input.favourited !== undefined
-              ? { favourited: input.favourited }
-              : {}),
-            ...(input.note !== undefined ? { note: input.note } : {}),
-            ...(input.summary !== undefined ? { summary: input.summary } : {}),
-          };
-          await ctx.db
-            .update(bookmarks)
-            .set({ ...resaved, modifiedAt: now })
-            .where(
-              and(
-                eq(bookmarks.userId, ctx.user.id),
-                eq(bookmarks.id, alreadyExists.id),
-              ),
-            );
+          const resaved = ctx.db.transaction((tx) => {
+            // Read and merge under the write transaction so independent clients
+            // updating different metadata keys cannot overwrite each other.
+            const current = tx
+              .select({ metadata: bookmarks.metadata })
+              .from(bookmarks)
+              .where(eq(bookmarks.id, alreadyExists.id))
+              .get()!;
+            const changes = {
+              createdAt: input.createdAt ?? now,
+              archived: input.archived ?? false,
+              ...(input.title !== undefined ? { title: input.title } : {}),
+              ...(input.favourited !== undefined
+                ? { favourited: input.favourited }
+                : {}),
+              ...(input.note !== undefined ? { note: input.note } : {}),
+              ...(input.summary !== undefined
+                ? { summary: input.summary }
+                : {}),
+              metadata:
+                input.metadata === undefined
+                  ? current.metadata
+                  : applyMetadataPatch(current.metadata, input.metadata),
+            };
+            tx.update(bookmarks)
+              .set({ ...changes, modifiedAt: now })
+              .where(
+                and(
+                  eq(bookmarks.userId, ctx.user.id),
+                  eq(bookmarks.id, alreadyExists.id),
+                ),
+              )
+              .run();
+            return changes;
+          });
+          if (
+            !rustEngineEnabled() &&
+            serverConfig.embedding.enableAutoIndexing &&
+            (input.title !== undefined ||
+              input.note !== undefined ||
+              input.summary !== undefined ||
+              bookmarkMetadataSearchText(alreadyExists.metadata) !==
+                bookmarkMetadataSearchText(resaved.metadata))
+          ) {
+            await EmbeddingsQueue.enqueue({
+              bookmarkId: alreadyExists.id,
+              type: "embed",
+              runTaggingOnComplete: false,
+            });
+          }
           await Promise.all([
             triggerSearchReindex(alreadyExists.id, {
               groupId: ctx.user.id,
@@ -370,6 +422,7 @@ export const bookmarksAppRouter = router({
               archived: input.archived,
               favourited: input.favourited,
               note: input.note,
+              metadata: applyMetadataPatch({}, input.metadata ?? null),
               summary: input.summary,
               createdAt: input.createdAt,
               source: input.source,
@@ -585,7 +638,18 @@ export const bookmarksAppRouter = router({
     .output(zBookmarkSchema)
     .use(ensureBookmarkOwnership)
     .mutation(async ({ input, ctx }) => {
+      let refreshEmbedding = false;
       await ctx.db.transaction((tx) => {
+        const before = tx
+          .select()
+          .from(bookmarks)
+          .where(eq(bookmarks.id, input.bookmarkId))
+          .get();
+        if (!before)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Bookmark not found",
+          });
         let somethingChanged = false;
 
         // Update link-specific fields if any are provided
@@ -676,6 +740,7 @@ export const bookmarksAppRouter = router({
           archived: boolean;
           favourited: boolean;
           note: string | null;
+          metadata: BookmarkMetadata;
           summary: string | null;
           createdAt: Date;
           modifiedAt: Date; // Always update modifiedAt
@@ -694,12 +759,26 @@ export const bookmarksAppRouter = router({
         if (input.note !== undefined) {
           commonUpdateData.note = input.note;
         }
+        if (input.metadata !== undefined) {
+          commonUpdateData.metadata = applyMetadataPatch(
+            before.metadata,
+            input.metadata,
+          );
+        }
         if (input.summary !== undefined) {
           commonUpdateData.summary = input.summary;
         }
         if (input.createdAt !== undefined) {
           commonUpdateData.createdAt = input.createdAt;
         }
+        const after = { ...before, ...commonUpdateData };
+        refreshEmbedding =
+          somethingChanged ||
+          before.title !== after.title ||
+          before.note !== after.note ||
+          before.summary !== after.summary ||
+          bookmarkMetadataSearchText(before.metadata) !==
+            bookmarkMetadataSearchText(after.metadata);
 
         if (Object.keys(commonUpdateData).length > 1 || somethingChanged) {
           tx.update(bookmarks)
@@ -713,6 +792,19 @@ export const bookmarksAppRouter = router({
             .run();
         }
       });
+
+      // Rust mode records this intent transactionally through the domain outbox.
+      if (
+        !rustEngineEnabled() &&
+        refreshEmbedding &&
+        serverConfig.embedding.enableAutoIndexing
+      ) {
+        await EmbeddingsQueue.enqueue({
+          bookmarkId: input.bookmarkId,
+          type: "embed",
+          runTaggingOnComplete: false,
+        });
+      }
 
       // Refetch the updated bookmark data to return the full object
       const updatedBookmark = (

@@ -95,6 +95,12 @@ rendering in Chrome, external page fetching, authenticated Meilisearch access,
 and small OpenAI requests for tagging, image-model access, and embeddings.
 Mobile login to the instance has also been confirmed.
 
+The production background runtime now uses the Rust engine. Its cutover passed
+an isolated restore, real-provider tests with synthetic content, crash and
+stale-result tests, API and asset compatibility checks, and live screenshot/PDF
+rendering. All original database records and saved files were preserved. See
+the engine document for the full validation list and recovery behavior.
+
 The OpenAI key is restricted to the endpoints used by the app: Chat Completions
 and Embeddings. If a new feature gets permission errors, check its endpoint
 requirements before broadening access. Karakeep API keys used by MCP and other

@@ -161,11 +161,30 @@ tags during iterative verification, and wait for each build to finish before
 starting a suite. Runtime files, backups and operational measurements stay
 outside the source checkout.
 
+## Validation
+
+The initial Linux deployment passed these checks:
+
+- Five Rust tests, five durable-ledger tests, 521 application tests, and 40
+  extraction and crawler tests.
+- 156 API, storage and background compatibility tests across 20 files. The two
+  disruptive cases run separately in the five-test engine recovery suite.
+- All 64 repository type, lint and formatting tasks, plus OpenAPI compatibility.
+- Real OpenAI tagging and embeddings using an empty database and synthetic text.
+- Migration of an isolated production backup with AI credentials removed;
+  original records, saved files and the search index remained intact.
+- Live loopback and Tailscale health, preservation of all 34 original database
+  tables, and screenshot/PDF rendering from an offline synthetic page.
+- Browser startup, active leases and idle termination using the pinned browser
+  image; engine crash recovery, stale-result rejection and completion replay.
+
 ## Deployment and rollback
 
 Build and operate with `docker/briq/manage.sh`; both application and browser
 images receive the same revision/timestamp tag. Building selects images but
 does not replace running containers. See the host README for commands.
+Save the running image selection before building: a successful build updates
+`image.env` while the old containers can still be running.
 
 Before cutover, pause application writes, take a consistent copy of the complete
 data directory, search data and private configuration, and retain the old image

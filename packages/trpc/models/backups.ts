@@ -4,6 +4,10 @@ import { z } from "zod";
 
 import { assets, backupsTable } from "@karakeep/db/schema";
 import { BackupQueue, deleteAsset } from "@karakeep/shared-server";
+import {
+  rustEngineEnabled,
+  workLedger,
+} from "@karakeep/shared-server/work/runtime";
 import { zBackupSchema } from "@karakeep/shared/types/backups";
 
 import { AuthedContext } from "..";
@@ -49,16 +53,26 @@ export class Backup {
   }
 
   static async create(ctx: AuthedContext): Promise<Backup> {
-    const [backup] = await ctx.db
-      .insert(backupsTable)
-      .values({
-        userId: ctx.user.id,
-        size: 0,
-        bookmarkCount: 0,
-        status: "pending",
-      })
-      .returning();
-    return new Backup(ctx, backup!);
+    const backup = ctx.db.transaction((tx) => {
+      const row = tx
+        .insert(backupsTable)
+        .values({
+          userId: ctx.user.id,
+          size: 0,
+          bookmarkCount: 0,
+          status: "pending",
+        })
+        .returning()
+        .get();
+      if (rustEngineEnabled())
+        workLedger().enqueue(
+          "export",
+          { userId: ctx.user.id, backupId: row.id },
+          { subject: `export:${ctx.user.id}` },
+        );
+      return row;
+    });
+    return new Backup(ctx, backup);
   }
 
   async triggerBackgroundJob({

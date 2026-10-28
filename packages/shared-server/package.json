@@ -37,6 +37,7 @@
   },
   "main": "index.ts",
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.ts",
+    "./work/*": "./src/work/*.ts"
   }
 }

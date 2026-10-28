@@ -10,6 +10,7 @@ import {
 import { zRuleEngineEventSchema } from "@karakeep/shared/types/rules";
 
 import { loadAllPlugins } from "./plugins";
+import { queueKinds, rustEngineEnabled, workLedger } from "./work/runtime";
 
 export enum QueuePriority {
   Low = 50,
@@ -52,15 +53,41 @@ function createDeferredQueue<T>(name: string, options: QueueOptions): Queue<T> {
     opts: options,
     name: () => name,
     ensureInit: async () => {
+      if (rustEngineEnabled()) return;
       await ensureQueue();
     },
     async enqueue(payload: T, opts?: EnqueueOptions) {
+      if (rustEngineEnabled()) {
+        let data = payload as Record<string, unknown>;
+        const kind = queueKinds[name];
+        if (!kind) throw new Error(`Unknown engine queue: ${name}`);
+        if (kind === "ingest")
+          data = {
+            runInference: true,
+            archiveFullPage: false,
+            storePdf: false,
+            ...data,
+          };
+        return workLedger().enqueue(kind, data, {
+          ...opts,
+          priority:
+            opts?.priority ?? (name === "low_priority_crawler_queue" ? 50 : 0),
+          maxAttempts: options.defaultJobArgs.numRetries + 1,
+        });
+      }
       return (await ensureQueue()).enqueue(payload, opts);
     },
     async stats() {
+      if (rustEngineEnabled()) return workLedger().stats(queueKinds[name]);
       return (await ensureQueue()).stats();
     },
     async cancelAllNonRunning() {
+      if (rustEngineEnabled())
+        return workLedger()
+          .sqlite.prepare(
+            "UPDATE work_jobs SET state='obsolete',updatedAt=? WHERE kind=? AND state='pending'",
+          )
+          .run(Date.now(), queueKinds[name]).changes;
       const q = await ensureQueue();
       return q.cancelAllNonRunning?.() ?? 0;
     },
@@ -68,11 +95,13 @@ function createDeferredQueue<T>(name: string, options: QueueOptions): Queue<T> {
 }
 
 export async function prepareQueue() {
+  if (rustEngineEnabled()) return;
   const client = await getClient();
   await client.prepare();
 }
 
 export async function startQueue() {
+  if (rustEngineEnabled()) return;
   const client = await getClient();
   await client.start();
 }

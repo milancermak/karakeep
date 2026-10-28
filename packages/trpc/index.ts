@@ -48,6 +48,7 @@ export interface Context {
   db: typeof db;
   req: {
     ip: string | null;
+    processingImportItemId?: string;
   };
 }
 
@@ -57,6 +58,7 @@ export interface AuthedContext {
   db: typeof db;
   req: {
     ip: string | null;
+    processingImportItemId?: string;
   };
 }
 

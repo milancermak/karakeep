@@ -25,8 +25,11 @@ with the standard mobile apps and browser extensions when changing the API.
 ## Production deployment
 
 `compose.yaml` builds this checkout using the production Dockerfile's `aio`
-target, which runs the web application, migrations, and background workers.
-Chrome and Meilisearch run in separate containers.
+target, which runs the web application, migrations, and one Rust background
+engine. A second fork-specific image runs the browser host; Chrome starts on
+demand and exits after an idle window. Meilisearch runs separately. Architecture,
+source locations, recovery semantics and development checks are documented in
+[`docs/rust-engine.md`](../../docs/rust-engine.md).
 
 The helper defaults to a **sibling directory outside the checkout**:
 
@@ -73,15 +76,16 @@ Run from the repository root on the production host:
 ```
 
 `config` validates silently because expanded Compose output contains secrets.
-`build` tags the image as `karakeep-local:<revision>-local-<UTC timestamp>` and
-selects it in `image.env` only after the build succeeds. The revision identifies
+`build` tags the images as `karakeep-local:<revision>-local-<UTC timestamp>` and
+`karakeep-browser:<same tag>`, and selects them in `image.env` only after both
+builds succeed. The revision identifies
 the base commit; uncommitted local edits are also included in the build. `up`
 starts the selected image without rebuilding. Rebuilding never updates the
 running service by itself.
 
 Containers are named `karakeep-app`, `karakeep-chrome`, and `karakeep-search`, with
-application/role labels and a shared `karakeep.slice` cgroup. Container names do
-not rename Node or browser subprocesses in host process monitors. Use `stats`
+application/role labels and a shared `karakeep.slice` cgroup. The native engine
+appears as `karakeep-engine` in process monitors. Use `stats`
 for container resource totals and `processes` to map host PIDs to containers.
 
 ## Current validation and remaining work
@@ -101,7 +105,9 @@ the web and migration build commands, matching the existing worker command.
 Dependencies are already installed in the base stage; verification after copying
 the full workspace was triggering additional installs in both build stages.
 
-Off-host backups and a restore drill have **not** been configured. Set those up
-before relying on the instance as the sole copy of important material. Back up
-the database, saved assets, and private runtime configuration consistently.
-An image rollback alone cannot undo database migrations.
+A consistent local backup and isolated restore are part of the Rust-engine
+cutover. Off-host backups have **not** been configured. Back up the database,
+saved assets, search data and private runtime configuration consistently. Keep
+the prior application and Chrome image selection and Compose file together;
+see the engine document for rollback steps and pending-work handling. An image
+rollback alone cannot undo database migrations.

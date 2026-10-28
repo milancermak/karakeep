@@ -12,6 +12,7 @@
     "lint:fix": "oxlint --ignore-path=../../.gitignore --ignore-pattern='setup/docker-logs/**' . --fix",
     "test": "vitest run",
     "test:web": "vitest run tests/web",
+    "test:engine-recovery": "KARAKEEP_ENGINE_FAULT_TESTS=1 vitest run tests/workers/engine.test.ts",
     "test:watch": "vitest",
     "test:no-build": "E2E_TEST_NO_BUILD=1 vitest run"
   },

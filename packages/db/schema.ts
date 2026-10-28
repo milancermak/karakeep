@@ -10,6 +10,7 @@ import {
   sqliteTable,
   text,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
 import type { ZApiKeyScope } from "@karakeep/shared/types/apiKeys";
@@ -22,6 +23,54 @@ function createdAtField(colName = "createdAt") {
     .notNull()
     .$defaultFn(() => new Date());
 }
+
+// Engine state deliberately has no bookmark FK: deletion work and tombstones
+// must survive deleting their subject. Domain data remains in the existing tables.
+export const workJobs = sqliteTable(
+  "work_jobs",
+  {
+    id: text("id").primaryKey().notNull(),
+    kind: text("kind").notNull(),
+    payload: text("payload").notNull(),
+    subject: text("subject"),
+    state: text("state").notNull().default("pending"),
+    dedupeKey: text("dedupeKey").notNull(),
+    priority: integer("priority").notNull().default(0),
+    availableAt: integer("availableAt").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    maxAttempts: integer("maxAttempts").notNull().default(5),
+    token: text("token"),
+    leaseUntil: integer("leaseUntil"),
+    fingerprint: text("fingerprint"),
+    checkpoint: text("checkpoint"),
+    error: text("error"),
+    createdAt: integer("createdAt").notNull(),
+    updatedAt: integer("updatedAt").notNull(),
+  },
+  (t) => [
+    uniqueIndex("work_jobs_pending_key")
+      .on(t.dedupeKey)
+      .where(sql`${t.state}='pending'`),
+    index("work_jobs_due").on(t.state, t.availableAt, t.priority),
+    index("work_jobs_subject").on(t.subject, t.state),
+  ],
+);
+
+export const workSettings = sqliteTable("work_settings", {
+  key: text("key").primaryKey().notNull(),
+  value: text("value").notNull(),
+});
+
+export const extractedDocuments = sqliteTable("extracted_documents", {
+  bookmarkId: text("bookmarkId")
+    .primaryKey()
+    .notNull()
+    .references(() => bookmarks.id, { onDelete: "cascade" }),
+  fingerprint: text("fingerprint").notNull(),
+  document: text("document").notNull(),
+  plainText: text("plainText").notNull(),
+  extractedAt: integer("extractedAt").notNull(),
+});
 
 function createdAtMsField() {
   return integer("createdAt", { mode: "timestamp_ms" })

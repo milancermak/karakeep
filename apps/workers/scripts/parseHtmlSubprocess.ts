@@ -35,6 +35,7 @@ import {
   ReaderViewAssessment,
   unavailableReaderViewAssessment,
 } from "../workers/utils/readerViewAssessment";
+import { isLikelyChallengePage } from "../workers/utils/metadataResolver";
 
 // Redirect all log output to stderr so it doesn't interfere with the JSON protocol on stdout.
 logger.clear();
@@ -286,6 +287,7 @@ async function main() {
   }
 
   const output = parseSubprocessOutputSchema.parse({
+    blocked: isLikelyChallengePage({ title: meta.title, htmlContent }),
     metadata: meta,
     readableContent,
     readerViewAssessment,

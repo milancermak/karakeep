@@ -28,6 +28,7 @@ export const parseSubprocessMetadataSchema = z.looseObject({
 });
 
 export const parseSubprocessOutputSchema = z.object({
+  blocked: z.boolean().optional(),
   metadata: parseSubprocessMetadataSchema,
   readableContent: z.object({ content: z.string() }).nullable(),
   readerViewAssessment: z

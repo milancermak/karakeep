@@ -12,12 +12,26 @@ import { instrumentDatabase } from "./instrumentation";
 import * as schema from "./schema";
 import { openSqliteDatabase } from "./sqlite";
 
-const sqlite = openSqliteDatabase(dbConfig.dbCredentials.url, {
-  readOnly: serverConfig.degradedMode,
-  walMode: serverConfig.database.walMode,
-});
+const databaseGlobal = globalThis as typeof globalThis & {
+  __karakeepSqlite?: Database.Database;
+};
+const sqlite = (databaseGlobal.__karakeepSqlite ??= openSqliteDatabase(
+  dbConfig.dbCredentials.url,
+  {
+    readOnly: serverConfig.degradedMode,
+    walMode: serverConfig.database.walMode,
+  },
+));
 
-instrumentDatabase(sqlite);
+if (
+  !(sqlite as Database.Database & { __karakeepInstrumented?: boolean })
+    .__karakeepInstrumented
+) {
+  instrumentDatabase(sqlite);
+  (
+    sqlite as Database.Database & { __karakeepInstrumented?: boolean }
+  ).__karakeepInstrumented = true;
+}
 
 export const db = drizzle(sqlite, { schema });
 export type DB = typeof db;

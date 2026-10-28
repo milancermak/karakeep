@@ -25,10 +25,13 @@ export async function loadAllPlugins() {
     // Load plugins here. Order of plugin loading matter.
     // Asset store providers (order matters - last one wins)
     await import("@karakeep/plugins/assetstore-filesystem");
-    await import("@karakeep/plugins/assetstore-s3");
+    if (process.env.ASSET_STORE_S3_BUCKET)
+      await import("@karakeep/plugins/assetstore-s3");
     // Queue provider(s)
-    await import("@karakeep/plugins/queue-liteque");
-    await import("@karakeep/plugins/queue-restate");
+    if (process.env.KARAKEEP_ENGINE !== "rust") {
+      await import("@karakeep/plugins/queue-liteque");
+      await import("@karakeep/plugins/queue-restate");
+    }
     await import("@karakeep/plugins/search-meilisearch");
     await import("@karakeep/plugins/vectorstore-meilisearch");
     // Rate limiters (order matters - last one wins)

@@ -11,6 +11,7 @@ import {
   bookmarkTags,
   bookmarkTexts,
   customPrompts,
+  importStagingBookmarks,
   tagsOnBookmarks,
   userReadingProgress,
   users,
@@ -465,6 +466,18 @@ export const bookmarksAppRouter = router({
             }
           }
 
+          if (ctx.req.processingImportItemId) {
+            tx.update(importStagingBookmarks)
+              .set({
+                resultBookmarkId: bookmark.id,
+                result: "accepted",
+                resultReason: "applying_metadata",
+              })
+              .where(
+                eq(importStagingBookmarks.id, ctx.req.processingImportItemId),
+              )
+              .run();
+          }
           return {
             alreadyExists: false,
             tags: [] as ZBookmarkTags[],

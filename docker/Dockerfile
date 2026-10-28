@@ -1,3 +1,22 @@
+ARG KARAKEEP_CHROME_BASE=ghcr.io/karakeep-app/karakeep-chrome:release
+
+################# Rust engine ##############
+FROM rust:1-bookworm AS engine_builder
+WORKDIR /engine
+COPY apps/engine/Cargo.toml apps/engine/Cargo.lock ./
+COPY apps/engine/src ./src
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/engine/target,sharing=locked \
+    cargo build --release --locked \
+    && cp target/release/karakeep-engine /karakeep-engine
+
+################# Demand-driven Chrome ##############
+FROM ${KARAKEEP_CHROME_BASE} AS browser
+COPY --from=engine_builder /karakeep-engine /usr/local/bin/karakeep-engine
+EXPOSE 9224
+HEALTHCHECK --interval=5s --timeout=3s --retries=5 CMD ["/usr/local/bin/karakeep-engine", "browser-health"]
+ENTRYPOINT ["/usr/local/bin/karakeep-engine", "browser-host"]
+
 ################# Monolith Builder ##############
 FROM rust:1-bookworm AS monolith_builder
 
@@ -135,6 +154,9 @@ RUN apt-get update \
         graphicsmagick \
         ghostscript \
         ffmpeg \
+        poppler-utils \
+        tesseract-ocr \
+        tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 ARG TARGETARCH
@@ -155,6 +177,7 @@ RUN echo "--js-runtimes node" > /etc/yt-dlp.conf
 
 # Copy monolith binary from builder
 COPY --from=monolith_builder /usr/local/cargo/bin/monolith /usr/local/bin/monolith
+COPY --from=engine_builder /karakeep-engine /usr/local/bin/karakeep-engine
 
 ######################
 # Prepare the web app
@@ -196,7 +219,7 @@ RUN touch /etc/s6-overlay/s6-rc.d/user/contents.d/init-db-migration \
     /etc/s6-overlay/s6-rc.d/user/contents.d/svc-web \
     /etc/s6-overlay/s6-rc.d/user/contents.d/svc-workers
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 CMD wget --no-verbose --tries=1 --spider "http://127.0.0.1:${PORT:-3000}/api/health" || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 CMD wget --no-verbose --tries=1 --spider "http://127.0.0.1:${PORT:-3000}/api/health" && ([ "$KARAKEEP_ENGINE" != rust ] || karakeep-engine health) || exit 1
 
 ################# The web container ##############
 

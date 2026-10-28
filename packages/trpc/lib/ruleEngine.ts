@@ -16,6 +16,10 @@ import {
 import { EnqueueOptions } from "@karakeep/shared/queueing";
 import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
 import {
+  rustEngineEnabled,
+  workLedger,
+} from "@karakeep/shared-server/work/runtime";
+import {
   RuleEngineAction,
   RuleEngineCondition,
   RuleEngineEvent,
@@ -265,30 +269,70 @@ export class RuleEngine {
     });
   }
 
+  private mutate(fn: () => void) {
+    if (!rustEngineEnabled()) {
+      fn();
+      return;
+    }
+    const sql = this.ctx.db.$client;
+    sql
+      .transaction(() => {
+        const previous = sql
+          .prepare(
+            "SELECT value FROM work_settings WHERE key='applying_result'",
+          )
+          .get() as { value: string };
+        sql
+          .prepare(
+            "UPDATE work_settings SET value='1' WHERE key='applying_result'",
+          )
+          .run();
+        fn();
+        // Preserve the existing rule semantics: tag/favourite/archive actions do
+        // not recursively trigger more rules. Their search update is durable.
+        workLedger().enqueue("publish", {
+          bookmarkId: this.bookmark.id,
+          type: "index",
+        });
+        sql
+          .prepare(
+            "UPDATE work_settings SET value=? WHERE key='applying_result'",
+          )
+          .run(previous.value);
+      })
+      .immediate();
+  }
+
   async executeAction(action: RuleEngineAction): Promise<string> {
     switch (action.type) {
       case "addTag": {
-        await this.ctx.db
-          .insert(tagsOnBookmarks)
-          .values([
-            {
-              attachedBy: "human",
-              bookmarkId: this.bookmark.id,
-              tagId: action.tagId,
-            },
-          ])
-          .onConflictDoNothing();
+        this.mutate(() =>
+          this.ctx.db
+            .insert(tagsOnBookmarks)
+            .values([
+              {
+                attachedBy: "human",
+                bookmarkId: this.bookmark.id,
+                tagId: action.tagId,
+              },
+            ])
+            .onConflictDoNothing()
+            .run(),
+        );
         return `Added tag ${action.tagId}`;
       }
       case "removeTag": {
-        await this.ctx.db
-          .delete(tagsOnBookmarks)
-          .where(
-            and(
-              eq(tagsOnBookmarks.tagId, action.tagId),
-              eq(tagsOnBookmarks.bookmarkId, this.bookmark.id),
-            ),
-          );
+        this.mutate(() =>
+          this.ctx.db
+            .delete(tagsOnBookmarks)
+            .where(
+              and(
+                eq(tagsOnBookmarks.tagId, action.tagId),
+                eq(tagsOnBookmarks.bookmarkId, this.bookmark.id),
+              ),
+            )
+            .run(),
+        );
         return `Removed tag ${action.tagId}`;
       }
       case "addToList": {
@@ -315,21 +359,27 @@ export class RuleEngine {
         return `Enqueued full page archive`;
       }
       case "favouriteBookmark": {
-        await this.ctx.db
-          .update(bookmarks)
-          .set({
-            favourited: true,
-          })
-          .where(eq(bookmarks.id, this.bookmark.id));
+        this.mutate(() =>
+          this.ctx.db
+            .update(bookmarks)
+            .set({
+              favourited: true,
+            })
+            .where(eq(bookmarks.id, this.bookmark.id))
+            .run(),
+        );
         return `Marked as favourited`;
       }
       case "archiveBookmark": {
-        await this.ctx.db
-          .update(bookmarks)
-          .set({
-            archived: true,
-          })
-          .where(eq(bookmarks.id, this.bookmark.id));
+        this.mutate(() =>
+          this.ctx.db
+            .update(bookmarks)
+            .set({
+              archived: true,
+            })
+            .where(eq(bookmarks.id, this.bookmark.id))
+            .run(),
+        );
         return `Marked as archived`;
       }
       default: {

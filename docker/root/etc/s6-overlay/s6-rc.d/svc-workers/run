@@ -1,5 +1,8 @@
 #!/command/with-contenv sh
 # shellcheck shell=bash
 
+if [ "$KARAKEEP_ENGINE" = rust ]; then
+  exec /usr/local/bin/karakeep-engine
+fi
 cd /app/apps/workers;
 exec node dist/index.js

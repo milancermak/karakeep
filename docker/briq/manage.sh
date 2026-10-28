@@ -37,7 +37,7 @@ case "$action" in
     printf 'KARAKEEP_IMAGE_TAG=%s\nKARAKEEP_SOURCE_REVISION=%s\n' \
       "$KARAKEEP_IMAGE_TAG" "$KARAKEEP_SOURCE_REVISION" > "$build_env"
     docker compose --env-file "$KARAKEEP_RUNTIME_DIR/.env" \
-      --env-file "$build_env" -f "$script_dir/compose.yaml" build app "$@"
+      --env-file "$build_env" -f "$script_dir/compose.yaml" build app chrome "$@"
     mv -- "$build_env" "$KARAKEEP_RUNTIME_DIR/image.env"
     printf 'Built karakeep-local:%s\n' "$KARAKEEP_IMAGE_TAG"
     ;;

@@ -1,5 +1,6 @@
 services:
   web:
+    image: ${KARAKEEP_TEST_IMAGE:-karakeep-engine:test}
     build:
       dockerfile: docker/Dockerfile
       context: ../../
@@ -16,13 +17,17 @@ services:
       - "${KARAKEEP_PORT:-3000}:3000"
     environment:
       DATA_DIR: /tmp
+      KARAKEEP_ENGINE: rust
       DB_WAL_MODE: "true"
       NEXTAUTH_SECRET: secret
       NEXTAUTH_URL: http://localhost:${KARAKEEP_PORT:-3000}
       MEILI_MASTER_KEY: dummy
       MEILI_ADDR: http://meilisearch:7700
       BROWSER_WEB_URL: http://chrome:9222
+      BROWSER_CONTROL_URL: http://chrome:9224
+      BROWSER_CONNECT_ONDEMAND: "true"
       CRAWLER_NUM_WORKERS: 6
+      KARAKEEP_ENGINE_CONCURRENCY: 10
       CRAWLER_ALLOWED_INTERNAL_HOSTNAMES: nginx
       CRAWLER_STORE_PDF: "true"
       CRAWLER_VIDEO_DOWNLOAD: "true"
@@ -41,10 +46,11 @@ services:
       MEILI_NO_ANALYTICS: "true"
       MEILI_MASTER_KEY: dummy
   chrome:
-    image: ${KARAKEEP_CHROME_IMAGE:-karakeep-chrome:e2e}
+    image: ${KARAKEEP_CHROME_IMAGE:-karakeep-browser:e2e}
     build:
       context: ../..
-      dockerfile: docker/chrome/Dockerfile
+      dockerfile: docker/Dockerfile
+      target: browser
     restart: unless-stopped
     init: true
     command:

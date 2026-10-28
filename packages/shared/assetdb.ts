@@ -8,6 +8,7 @@ export const enum ASSET_TYPES {
   APPLICATION_PDF = "application/pdf",
   APPLICATION_ZIP = "application/zip",
   TEXT_HTML = "text/html",
+  APPLICATION_OCTET_STREAM = "application/octet-stream",
 
   VIDEO_MP4 = "video/mp4",
   VIDEO_WEBM = "video/webm",
@@ -33,6 +34,7 @@ export const SUPPORTED_UPLOAD_ASSET_TYPES: Set<string> = new Set<string>([
   ...VIDEO_ASSET_TYPES,
   ASSET_TYPES.TEXT_HTML,
   ASSET_TYPES.APPLICATION_PDF,
+  ASSET_TYPES.APPLICATION_OCTET_STREAM,
 ]);
 
 // The assets that we allow as a bookmark of type asset

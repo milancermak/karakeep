@@ -2,7 +2,8 @@
 
 This fork has a working self-hosted deployment and is intended to support custom
 capture clients, including a macOS menu bar app, and changes to retrieval and MCP
-tools. Product personalization has not been implemented yet. Keep compatibility
+tools. The native capture client is documented in
+[`apps/macos/README.md`](../../apps/macos/README.md). Keep compatibility
 with the standard mobile apps and browser extensions when changing the API.
 
 ## Development on another machine

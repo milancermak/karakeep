@@ -16,6 +16,13 @@ import { workLedger } from "@karakeep/shared-server/work/runtime";
 import config from "@karakeep/shared/config";
 import { bookmarkMetadataSearchText } from "@karakeep/shared/types/metadata";
 import {
+  constructTitlePrompt,
+  hasBookmarkTitle,
+  titleContent,
+  TITLE_CONTEXT_LENGTH,
+  TITLE_MAX_OUTPUT_TOKENS,
+} from "@karakeep/shared/titles";
+import {
   buildImagePrompt,
   constructTextTaggingPrompt,
   constructSummaryPrompt,
@@ -144,6 +151,7 @@ async function prepareAI(
   data: Record<string, unknown>,
   dir: string,
 ) {
+  if (data.type === "title") return prepareTitle(b, dir);
   const summary = data.type === "summarize";
   if (
     !config.inference.isConfigured ||
@@ -208,6 +216,57 @@ async function prepareAI(
       "image.bin",
     );
     input.imageContentType = metadata?.contentType ?? "image/png";
+  }
+  return input;
+}
+
+async function prepareTitle(b: Snapshot, dir: string) {
+  if (
+    !config.inference.enableAutoTitles ||
+    !config.inference.openAIApiKey ||
+    hasBookmarkTitle(b.title)
+  )
+    return { operation: "noop" };
+  // A link's useful content becomes available after extraction. Failed crawls
+  // can still use the user's annotation, without treating a URL as content.
+  if (
+    b.link &&
+    !b.link.crawledAt &&
+    !b.link.htmlContent &&
+    !b.link.contentAssetId &&
+    b.link.crawlStatus !== "failure"
+  )
+    return { operation: "noop" };
+  const asset = b.assets.find((asset) => asset.id === b.asset?.assetId);
+  const image =
+    b.asset?.assetType === "image" && asset?.contentType !== "image/gif";
+  const content = titleContent({
+    text: await plainText(b),
+    note: b.note,
+    metadata: b.metadata,
+    sourceTitle: b.link?.title,
+    description: b.link?.description,
+  });
+  if (!content && !image) return { operation: "noop" };
+  const input: Record<string, unknown> = {
+    operation: "title",
+    model: config.inference.titleModel,
+    template: constructTitlePrompt("{{CONTENT}}"),
+    content,
+    contextLength: TITLE_CONTEXT_LENGTH,
+    maxOutputTokens: TITLE_MAX_OUTPUT_TOKENS,
+    useMaxCompletionTokens: true,
+    reasoningEffort: "none",
+    serviceTier: config.inference.openAIServiceTier,
+  };
+  if (image && b.asset) {
+    input.imagePath = await materialize(
+      b.userId,
+      b.asset.assetId,
+      dir,
+      "title-image.bin",
+    );
+    input.imageContentType = asset?.contentType ?? "image/png";
   }
   return input;
 }

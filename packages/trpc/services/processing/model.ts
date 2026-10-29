@@ -4,6 +4,7 @@ import { bookmarks } from "@karakeep/db/schema";
 import serverConfig from "@karakeep/shared/config";
 import { bookmarkMetadataSearchText } from "@karakeep/shared/types/metadata";
 import type { BookmarkMetadata } from "@karakeep/shared/types/metadata";
+import { hasBookmarkTitle } from "@karakeep/shared/titles";
 import { digest } from "@karakeep/shared-server/work/ledger";
 import type { WorkJob } from "@karakeep/shared-server/work/ledger";
 import { workLedger } from "@karakeep/shared-server/work/runtime";
@@ -92,6 +93,21 @@ export async function plainText(b: Snapshot): Promise<string> {
   return text;
 }
 
+export function queueTitle(b: Snapshot, priority = 0) {
+  if (
+    serverConfig.inference.enableAutoTitles &&
+    serverConfig.inference.openAIApiKey &&
+    !hasBookmarkTitle(b.title)
+  ) {
+    // Run before embeddings so their first input includes the generated title.
+    workLedger().enqueue(
+      "ai",
+      { bookmarkId: b.id, type: "title" },
+      { priority: priority - 1 },
+    );
+  }
+}
+
 export function enqueuePipeline(
   b: Snapshot,
   runInference = true,
@@ -99,6 +115,7 @@ export function enqueuePipeline(
 ) {
   const ledger = workLedger();
   if (runInference) {
+    queueTitle(b, priority);
     if (serverConfig.embedding.enableAutoIndexing)
       ledger.enqueue(
         "embedding",
@@ -245,6 +262,8 @@ export async function processDomainEvent(job: WorkJob): Promise<void> {
         }
         if (data.operation === "created" || data.operation === "edited")
           queueWebhook(b.id, b.userId, data.operation);
+        if (data.operation === "edited" || data.operation === "projection")
+          queueTitle(b);
         if (
           data.operation === "edited" &&
           serverConfig.embedding.enableAutoIndexing

@@ -83,6 +83,11 @@ export const resultSchema = z.discriminatedUnion("kind", [
     usage: z.unknown().optional(),
   }),
   z.object({
+    kind: z.literal("title"),
+    title: z.string().max(1024),
+    usage: z.unknown().optional(),
+  }),
+  z.object({
     kind: z.literal("summary"),
     summary: z.string(),
     usage: z.unknown().optional(),

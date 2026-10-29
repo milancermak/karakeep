@@ -255,6 +255,25 @@
         "properties": {
           "kind": {
             "type": "string",
+            "const": "title"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "usage": {}
+        },
+        "required": [
+          "kind",
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
             "const": "summary"
           },
           "summary": {

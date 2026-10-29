@@ -69,7 +69,7 @@ async fn execute(job: &Job, app: &Application) -> Result<Value> {
             )
             .await
         }
-        "embedding" | "tags" | "summary" => ai::execute(job, app).await,
+        "embedding" | "tags" | "summary" | "title" => ai::execute(job, app).await,
         "searchIndex" | "searchDelete" | "vectorIndex" | "vectorDelete" => {
             projection::execute(job, app).await
         }

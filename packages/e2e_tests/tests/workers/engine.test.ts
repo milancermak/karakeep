@@ -87,7 +87,7 @@ describe("Rust engine contract", () => {
     );
     return data;
   }
-  function claimTag(bookmarkId: string) {
+  function claimTag(bookmarkId: string, expectedFingerprint?: string) {
     const id = randomUUID(),
       now = Date.now();
     run(
@@ -95,7 +95,7 @@ describe("Rust engine contract", () => {
       VALUES (?,'ai',?,?,?,-100,?,?,?)`,
       [
         id,
-        JSON.stringify({ bookmarkId, type: "tag" }),
+        JSON.stringify({ bookmarkId, type: "tag", expectedFingerprint }),
         bookmarkId,
         id,
         now,
@@ -268,6 +268,121 @@ describe("Rust engine contract", () => {
 
   // Fault injection stops the shared executor. Run these tests separately from
   // parallel compatibility tests so their leased work is not interrupted.
+  it.runIf(process.env.KARAKEEP_ENGINE_FAULT_TESTS === "1")(
+    "preserves a human title against a late AI result and isolates title failures from tagging",
+    async () => {
+      await api.users.updateSettings.mutate({ autoTaggingEnabled: false });
+      pauseEngine(true);
+      try {
+        const { data: bookmark } = await client.POST("/bookmarks", {
+          body: {
+            type: "text",
+            text: "Compare Rust and Node.js memory usage.",
+            note: "Keep the comparison short",
+            metadata: {
+              capture: { pageTitle: "Source context" },
+              x: { postId: "unindexed-id" },
+            },
+          },
+        });
+        assert(bookmark);
+        const job = rpc("claim", { kinds: ["ai"], waitMs: 0 }) as {
+          id: string;
+          token: string;
+          input: {
+            operation: string;
+            model: string;
+            reasoningEffort: string;
+            content: string;
+          };
+        };
+        expect(job.input).toMatchObject({
+          operation: "title",
+          model: "gpt-6.1-terra",
+          reasoningEffort: "none",
+        });
+        expect(job.input.content).toContain("Keep the comparison short");
+        expect(job.input.content).toContain(
+          "Compare Rust and Node.js memory usage",
+        );
+        expect(job.input.content).not.toContain("unindexed-id");
+        await api.bookmarks.updateBookmark.mutate({
+          bookmarkId: bookmark.id,
+          title: "My manually supplied title",
+        });
+        expect(
+          rpc("complete", {
+            id: job.id,
+            token: job.token,
+            result: { kind: "title", title: "Late generated title" },
+          }),
+        ).toBe(true);
+        expect(
+          query("SELECT title FROM bookmarks WHERE id=?", [bookmark.id]),
+        ).toEqual([{ title: "My manually supplied title" }]);
+        expect(
+          query("SELECT state FROM work_jobs WHERE id=?", [job.id]),
+        ).toEqual([{ state: "obsolete" }]);
+
+        // Simulate an embedding produced before the title changed. Its stale
+        // tagging continuation must get one current successor, not disappear
+        // or duplicate a successor that is already waiting.
+        run(
+          "UPDATE work_jobs SET state='completed' WHERE subject=? AND kind='embedding' AND state='pending'",
+          [bookmark.id],
+        );
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const staleTag = claimTag(bookmark.id, "stale-title-context");
+          expect(
+            rpc("complete", {
+              ...staleTag,
+              result: { kind: "done", skipped: true },
+            }),
+          ).toBe(true);
+          expect(
+            query(
+              "SELECT count(*) n FROM work_jobs WHERE subject=? AND kind='ai' AND state='pending' AND json_extract(payload,'$.type')='tag' AND json_extract(payload,'$.expectedFingerprint') IS NULL",
+              [bookmark.id],
+            ),
+          ).toEqual([{ n: 1 }]);
+        }
+
+        const { data: failing } = await client.POST("/bookmarks", {
+          body: {
+            type: "text",
+            text: "A synthetic note for a provider failure.",
+          },
+        });
+        assert(failing);
+        const failed = rpc("claim", { kinds: ["ai"], waitMs: 0 }) as {
+          id: string;
+          token: string;
+          input: { operation: string };
+        };
+        expect(failed.input.operation).toBe("title");
+        run("UPDATE work_jobs SET maxAttempts=1 WHERE id=?", [failed.id]);
+        expect(
+          rpc("fail", {
+            id: failed.id,
+            token: failed.token,
+            error: "Synthetic title provider error",
+          }),
+        ).toBe(true);
+        expect(
+          query("SELECT title,taggingStatus FROM bookmarks WHERE id=?", [
+            failing.id,
+          ]),
+        ).toEqual([{ title: null, taggingStatus: "pending" }]);
+        expect(
+          query("SELECT state FROM work_jobs WHERE id=?", [failed.id]),
+        ).toEqual([{ state: "failed" }]);
+      } finally {
+        pauseEngine(false);
+      }
+    },
+    180000,
+  );
+
   it.runIf(process.env.KARAKEEP_ENGINE_FAULT_TESTS === "1")(
     "recovers a checkpointed result after the engine is killed and restarted",
     async () => {

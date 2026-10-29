@@ -214,6 +214,8 @@ pub async fn execute(job: &Job, app: &Application) -> Result<Value> {
             .context("inference response is empty")?;
         if operation == "tags" {
             json!({"kind":"tags","tags":parse_tags(text)?,"usage":response["usage"]})
+        } else if operation == "title" {
+            json!({"kind":"title","title":text,"usage":response["usage"]})
         } else {
             ensure!(!text.trim().is_empty(), "summary is empty");
             json!({"kind":"summary","summary":text,"usage":response["usage"]})

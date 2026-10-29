@@ -123,3 +123,6 @@ rollback alone cannot undo database migrations.
 
 See [`docs/bookmark-metadata.md`](../../docs/bookmark-metadata.md) for the fork's
 client metadata field, merge rules, retrieval projection and MacBook/MCP handoff.
+
+Missing-title generation in the Rust runtime uses a separate Terra model; see
+[`docs/generated-titles.md`](../../docs/generated-titles.md) for behavior and configuration.

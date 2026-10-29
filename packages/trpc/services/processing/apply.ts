@@ -1,7 +1,7 @@
 import { readFile, rm, stat } from "node:fs/promises";
 import { randomUUID, createHash } from "node:crypto";
 import path from "node:path";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@karakeep/db";
 import {
   assets,
@@ -17,12 +17,17 @@ import type { WorkJob } from "@karakeep/shared-server/work/ledger";
 import type { WorkResult } from "@karakeep/shared-server/work/contracts";
 import { workLedger } from "@karakeep/shared-server/work/runtime";
 import config from "@karakeep/shared/config";
+import {
+  hasBookmarkTitle,
+  normalizeGeneratedTitle,
+} from "@karakeep/shared/titles";
 import { checkedPath, publishArtifacts } from "./assets";
 import type { PublishedAsset } from "./assets";
 import {
   enqueuePipeline,
   fingerprint,
   queueInitial,
+  queueTitle,
   queueRules,
   queueWebhook,
   snapshot,
@@ -96,8 +101,35 @@ export async function completeJob(
   if (
     data.expectedFingerprint &&
     (!b || fingerprint(b) !== data.expectedFingerprint)
-  )
-    return ledger.finish(job.id, job.token!, "obsolete");
+  ) {
+    return ledger.sqlite
+      .transaction(() => {
+        if (!ledger.finish(job.id, job.token!, "obsolete")) return false;
+        // A generated title can invalidate an older embed -> tag continuation.
+        // Keep initial tagging moving, without duplicating a current successor.
+        if (
+          b &&
+          job.kind === "ai" &&
+          data.type === "tag" &&
+          b.taggingStatus === "pending"
+        ) {
+          const successor = ledger.sqlite
+            .prepare(`SELECT 1 FROM work_jobs
+          WHERE subject=? AND state='pending' AND (
+            (kind='ai' AND json_extract(payload,'$.type')='tag'
+              AND (json_extract(payload,'$.expectedFingerprint') IS NULL
+                OR json_extract(payload,'$.expectedFingerprint')=?))
+            OR (kind='embedding' AND json_extract(payload,'$.type')='embed'
+              AND coalesce(json_extract(payload,'$.runTaggingOnComplete'),1)=1)
+          ) LIMIT 1`)
+            .get(b.id, fingerprint(b));
+          if (!successor)
+            ledger.enqueue("ai", { bookmarkId: b.id, type: "tag" });
+        }
+        return true;
+      })
+      .immediate();
+  }
   if (job.fingerprint && (!b || fingerprint(b) !== job.fingerprint)) {
     ledger.sqlite
       .transaction(() => {
@@ -307,6 +339,43 @@ export async function completeJob(
         queueWebhook(b.id, b.userId, "ai tagged");
         ledger.enqueue("publish", { bookmarkId: b.id, type: "index" });
       }
+      if (b && result.kind === "title" && !hasBookmarkTitle(b.title)) {
+        const title = normalizeGeneratedTitle(result.title);
+        if (title) {
+          const updated = db
+            .update(bookmarks)
+            .set({ title, modifiedAt: new Date() })
+            .where(
+              and(
+                eq(bookmarks.id, b.id),
+                b.title === null
+                  ? isNull(bookmarks.title)
+                  : eq(bookmarks.title, b.title),
+              ),
+            )
+            .run();
+          if (updated.changes) {
+            ledger.enqueue("publish", { bookmarkId: b.id, type: "index" });
+            // A pending embedding will prepare against the new title. Avoid a
+            // second paid request during the initial processing pipeline.
+            if (
+              config.embedding.enableAutoIndexing &&
+              !ledger.sqlite
+                .prepare(
+                  "SELECT 1 FROM work_jobs WHERE subject=? AND kind='embedding' AND state='pending' AND json_extract(payload,'$.type')='embed'",
+                )
+                .get(b.id)
+            ) {
+              ledger.enqueue("embedding", {
+                bookmarkId: b.id,
+                type: "embed",
+                runTaggingOnComplete: b.taggingStatus === "pending",
+              });
+            }
+            queueWebhook(b.id, b.userId, "edited");
+          }
+        }
+      }
       if (b && result.kind === "summary") {
         db.update(bookmarks)
           .set({ summary: result.summary, summarizationStatus: "success" })
@@ -331,7 +400,7 @@ export async function completeJob(
           });
       }
       if (b && result.kind === "done") {
-        if (job.kind === "ai")
+        if (job.kind === "ai" && data.type !== "title")
           db.update(bookmarks)
             .set(
               data.type === "summarize"
@@ -436,8 +505,10 @@ export function markFailure(job: WorkJob) {
             "UPDATE bookmarks SET taggingStatus=NULL,summarizationStatus=NULL,embeddingStatus=NULL WHERE id=?",
           )
           .run(data.bookmarkId);
+        const b = snapshot(data.bookmarkId);
+        if (b) queueTitle(b);
       }
-      if (job.kind === "ai")
+      if (job.kind === "ai" && data.type !== "title")
         ledger.sqlite
           .prepare(
             `UPDATE bookmarks SET ${data.type === "summarize" ? "summarizationStatus" : "taggingStatus"}='failure' WHERE id=?`,

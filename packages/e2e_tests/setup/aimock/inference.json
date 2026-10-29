@@ -2,6 +2,14 @@
   "fixtures": [
     {
       "match": {
+        "model": "gpt-6.1-terra"
+      },
+      "response": {
+        "content": "\"Agent runtime comparison\""
+      }
+    },
+    {
+      "match": {
         "model": "text-embedding-3-small"
       },
       "response": {

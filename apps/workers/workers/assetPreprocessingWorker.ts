@@ -32,6 +32,7 @@ import {
   EnqueueOptions,
   getQueueClient,
 } from "@karakeep/shared/queueing";
+import { refreshBookmarkOwnerContent } from "@karakeep/trpc/lib/bookmarkNotes";
 
 export class AssetPreprocessingWorker {
   static async build() {
@@ -333,6 +334,7 @@ async function extractAndSaveImageText(
       metadata: null,
     })
     .where(eq(bookmarkAssets.id, bookmark.id));
+  await refreshBookmarkOwnerContent(db, bookmark.id);
   return true;
 }
 
@@ -370,6 +372,7 @@ async function extractAndSavePDFText(
       metadata: pdfParse.metadata ? JSON.stringify(pdfParse.metadata) : null,
     })
     .where(eq(bookmarkAssets.id, bookmark.id));
+  await refreshBookmarkOwnerContent(db, bookmark.id);
   return true;
 }
 

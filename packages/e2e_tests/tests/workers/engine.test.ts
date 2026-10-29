@@ -211,6 +211,14 @@ describe("Rust engine contract", () => {
     ).toEqual(
       initial.filter((row) => ["ingest", "asset", "ai"].includes(row.kind)),
     );
+    const [extracted] = query(
+      "SELECT plainText,document FROM extracted_documents WHERE bookmarkId=?",
+      [bookmark.id],
+    ) as { plainText: string; document: string }[];
+    expect(extracted.plainText).toBe("A text document about Rust and SQLite.");
+    expect(JSON.parse(extracted.document).ownerContent.text).toBe(
+      "My new note about agent hosting\n\n---\n\nA text document about Rust and SQLite.",
+    );
   }, 180000);
 
   it("applies rules without recursively firing rules for their own tag actions", async () => {

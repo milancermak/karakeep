@@ -83,6 +83,7 @@ import {
   router,
 } from "../index";
 import { RuleEngine } from "../lib/ruleEngine";
+import { refreshBookmarkOwnerContent } from "../lib/bookmarkNotes";
 import { getBookmarkIdsFromMatcher } from "../lib/search";
 import { reciprocalRankFusion } from "../lib/searchRanking";
 import { Asset } from "../models/assets";
@@ -345,6 +346,9 @@ export const bookmarksAppRouter = router({
               .run();
             return changes;
           });
+          if (input.note !== undefined) {
+            await refreshBookmarkOwnerContent(ctx.db, alreadyExists.id);
+          }
           if (
             !rustEngineEnabled() &&
             serverConfig.embedding.enableAutoIndexing &&
@@ -630,6 +634,9 @@ export const bookmarksAppRouter = router({
           enqueueOpts,
         ),
       ]);
+      if (bookmark.note?.trim()) {
+        await refreshBookmarkOwnerContent(ctx.db, bookmark.id);
+      }
       return bookmark;
     }),
 
@@ -804,6 +811,14 @@ export const bookmarksAppRouter = router({
           type: "embed",
           runTaggingOnComplete: false,
         });
+      }
+
+      if (
+        input.note !== undefined ||
+        input.text !== undefined ||
+        input.assetContent !== undefined
+      ) {
+        await refreshBookmarkOwnerContent(ctx.db, input.bookmarkId);
       }
 
       // Refetch the updated bookmark data to return the full object

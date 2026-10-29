@@ -1,0 +1,11 @@
+{
+  "name": "Karakeep Local",
+  "description": "Save pages, X posts, threads and Articles to your Karakeep server.",
+  "version": "1.0.0",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "{e98394b2-60a4-49bb-8893-64006385b075}",
+      "strict_min_version": "140.0"
+    }
+  }
+}

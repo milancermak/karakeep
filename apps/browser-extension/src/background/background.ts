@@ -1,6 +1,9 @@
+import superjson from "superjson";
+
 import {
   BookmarkTypes,
   ZNewBookmarkRequest,
+  zNewBookmarkRequestSchema,
 } from "@karakeep/shared/types/bookmarks";
 
 import { clearBadgeStatus, getBadgeStatus } from "../utils/badgeCache";
@@ -13,6 +16,7 @@ import { getApiClient, initializeClients } from "../utils/trpc";
 import { MessageType } from "../utils/type";
 import { isHttpUrl } from "../utils/url";
 import { NEW_BOOKMARK_REQUEST_KEY_NAME } from "./protocol";
+import { saveXBookmark } from "./x-capture";
 
 const OPEN_KARAKEEP_ID = "open-karakeep";
 const ADD_LINK_TO_KARAKEEP_ID = "add-link";
@@ -343,19 +347,39 @@ chrome.tabs.onUpdated.addListener(async (tabId) => {
 });
 
 // Listen for REFRESH_BADGE messages from popup and update badge accordingly
-chrome.runtime.onMessage.addListener(async (msg) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg?.type === "KARAKEEP_SAVE_X" && sender.id === chrome.runtime.id) {
+    const bookmark = zNewBookmarkRequestSchema.safeParse(msg.bookmark);
+    if (!bookmark.success) {
+      sendResponse({ success: false, error: "Invalid bookmark request" });
+      return;
+    }
+    saveXBookmark(bookmark.data, msg.tabId, msg.titleIsCustom === true)
+      .then((saved) =>
+        sendResponse({ success: true, bookmark: superjson.serialize(saved) }),
+      )
+      .catch((error) =>
+        sendResponse({
+          success: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Couldn't save this X page",
+        }),
+      );
+    return true;
+  }
   if (msg && msg.type) {
     if (msg.currentTab && msg.type === MessageType.BOOKMARK_REFRESH_BADGE) {
       console.log(
         "Received REFRESH_BADGE message for tab:",
         msg.currentTab.url,
       );
-      if (msg.currentTab.url) {
-        await clearBadgeStatus(msg.currentTab.url);
-      }
-      if (typeof msg.currentTab.id === "number") {
-        await checkAndUpdateIcon(msg.currentTab.id);
-      }
+      void (async () => {
+        if (msg.currentTab.url) await clearBadgeStatus(msg.currentTab.url);
+        if (typeof msg.currentTab.id === "number")
+          await checkAndUpdateIcon(msg.currentTab.id);
+      })();
     }
   }
 });

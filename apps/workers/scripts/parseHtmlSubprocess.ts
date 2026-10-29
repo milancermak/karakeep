@@ -36,6 +36,7 @@ import {
   unavailableReaderViewAssessment,
 } from "../workers/utils/readerViewAssessment";
 import { isLikelyChallengePage } from "../workers/utils/metadataResolver";
+import { extractCuratedXCapture } from "../workers/utils/curatedXCapture";
 
 // Redirect all log output to stderr so it doesn't interfere with the JSON protocol on stdout.
 logger.clear();
@@ -245,10 +246,14 @@ async function main() {
 
   logger.info(`[Crawler][${jobId}] Done extracting metadata from the page.`);
 
-  // Conditionally run readability (skip if metascraper already provided readable content, e.g. Reddit plugin)
-  let readableContent: { content: string } | null = null;
-  let readerViewAssessment: ReaderViewAssessment | null = null;
-  if (!metadataOnly && meta.readableContentHtml) {
+  const curatedCapture = metadataOnly
+    ? null
+    : extractCuratedXCapture(htmlContent, url);
+  let readableContent: { content: string } | null =
+    curatedCapture?.readableContent ?? null;
+  let readerViewAssessment: ReaderViewAssessment | null =
+    curatedCapture?.readerViewAssessment ?? null;
+  if (!metadataOnly && !readableContent && meta.readableContentHtml) {
     // Sanitize plugin-provided HTML through DOMPurify (the extractReadableContent
     // path already does this, but the direct-content path was missing it).
     const purifyWindow = new JSDOM("").window;

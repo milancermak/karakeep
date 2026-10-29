@@ -13,6 +13,10 @@ import {
   SUPPORTED_HIGHLIGHT_COLORS,
   ZHighlightColor,
 } from "@karakeep/shared/types/highlights";
+import {
+  createBookmarkSourceTextWalker,
+  isBookmarkOwnerNote,
+} from "@karakeep/shared/utils/bookmark-content-dom";
 
 import { HIGHLIGHT_COLOR_MAP } from "./highlights";
 import { Button } from "./ui/button";
@@ -239,6 +243,7 @@ const BookmarkHTMLHighlighter = forwardRef<
 
     // Check if we clicked on an existing highlight
     const target = e.target as HTMLElement;
+    if (isBookmarkOwnerNote(target)) return;
     if (target.dataset.highlight) {
       const highlightId = target.dataset.highlightId;
       if (highlightId && highlights) {
@@ -306,11 +311,7 @@ const BookmarkHTMLHighlighter = forwardRef<
 
   const getTextNodeOffset = (node: Node): number => {
     let offset = 0;
-    const walker = document.createTreeWalker(
-      contentRef.current!,
-      NodeFilter.SHOW_TEXT,
-      null,
-    );
+    const walker = createBookmarkSourceTextWalker(contentRef.current!);
 
     while (walker.nextNode()) {
       if (walker.currentNode === node) {
@@ -327,11 +328,11 @@ const BookmarkHTMLHighlighter = forwardRef<
   ): Highlight | null => {
     if (!contentRef.current) return null;
 
-    const startOffset =
-      getTextNodeOffset(range.startContainer) + range.startOffset;
-    const endOffset = getTextNodeOffset(range.endContainer) + range.endOffset;
-
-    if (startOffset === -1 || endOffset === -1) return null;
+    const startNodeOffset = getTextNodeOffset(range.startContainer);
+    const endNodeOffset = getTextNodeOffset(range.endContainer);
+    if (startNodeOffset < 0 || endNodeOffset < 0) return null;
+    const startOffset = startNodeOffset + range.startOffset;
+    const endOffset = endNodeOffset + range.endOffset;
 
     const highlight: Highlight = {
       id: "NOT_SET",
@@ -349,11 +350,7 @@ const BookmarkHTMLHighlighter = forwardRef<
     if (!contentRef.current) return;
 
     let currentOffset = 0;
-    const walker = document.createTreeWalker(
-      contentRef.current,
-      NodeFilter.SHOW_TEXT,
-      null,
-    );
+    const walker = createBookmarkSourceTextWalker(contentRef.current);
 
     const ranges: { node: Text; start: number; end: number }[] = [];
 

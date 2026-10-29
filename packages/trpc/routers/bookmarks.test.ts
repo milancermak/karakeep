@@ -4,6 +4,7 @@ import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   bookmarkLinks,
   bookmarks,
+  extractedDocuments,
   rssFeedImportsTable,
   tagsOnBookmarks,
   users,
@@ -155,9 +156,145 @@ describe("Bookmark Routes", () => {
     ).rejects.toThrow();
   });
 
+  test<CustomTestContext>("keeps notes first in readable content and stored owner content after edits and clearing", async ({
+    apiCallers,
+    db,
+  }) => {
+    const api = apiCallers[0].bookmarks;
+    const created = await api.createBookmark({
+      type: BookmarkTypes.TEXT,
+      text: "Original captured content",
+      note: "Why I kept this",
+    });
+    const stored = () => {
+      const row = db
+        .select()
+        .from(extractedDocuments)
+        .where(eq(extractedDocuments.bookmarkId, created.id))
+        .get()!;
+      return { ...row, document: JSON.parse(row.document) };
+    };
+    expect(stored().plainText).toBe("Original captured content");
+    expect(stored().document.ownerContent.text).toBe(
+      "Why I kept this\n\n---\n\nOriginal captured content",
+    );
+    const first = await api.getBookmarkReadableContent({
+      bookmarkId: created.id,
+      format: "text",
+    });
+    expect(first.content).toBe(stored().document.ownerContent.text);
+
+    await api.updateBookmark({ bookmarkId: created.id, note: "Updated note" });
+    await api.updateBookmark({
+      bookmarkId: created.id,
+      text: "Updated source content",
+    });
+    const edited = await api.getBookmarkReadableContent({
+      bookmarkId: created.id,
+      format: "text",
+    });
+    expect(edited.content).toBe(
+      "Updated note\n\n---\n\nUpdated source content",
+    );
+    expect(edited.contentVersion).not.toBe(first.contentVersion);
+    expect(stored().document.ownerContent.text).toBe(edited.content);
+    expect(
+      (await api.getBookmark({ bookmarkId: created.id })).content,
+    ).toMatchObject({
+      text: "Updated source content",
+    });
+
+    await api.updateBookmark({ bookmarkId: created.id, note: "" });
+    expect(stored().document).not.toHaveProperty("ownerContent");
+    expect(
+      (
+        await api.getBookmarkReadableContent({
+          bookmarkId: created.id,
+          format: "text",
+        })
+      ).content,
+    ).toBe("Updated source content");
+  });
+
+  test<CustomTestContext>("composes escaped owner HTML without changing source or duplicating notes on re-save", async ({
+    apiCallers,
+    db,
+  }) => {
+    const api = apiCallers[0].bookmarks;
+    const created = await api.createBookmark({
+      type: BookmarkTypes.LINK,
+      url: "https://example.com/notes-content",
+    });
+    const html =
+      '<p>Captured article <a href="https://example.com/repo">repository</a>.</p>';
+    await db
+      .update(bookmarkLinks)
+      .set({ htmlContent: html })
+      .where(eq(bookmarkLinks.id, created.id));
+    await api.updateBookmark({
+      bookmarkId: created.id,
+      note: '<script>alert("x")</script>\nNext line',
+    });
+    await api.createBookmark({
+      type: BookmarkTypes.LINK,
+      url: "https://example.com/notes-content",
+    });
+    await api.createBookmark({
+      type: BookmarkTypes.LINK,
+      url: "https://example.com/notes-content",
+      note: "Final note",
+    });
+    const result = await api.getBookmark({
+      bookmarkId: created.id,
+      includeContent: true,
+    });
+    assert(result.content.type === BookmarkTypes.LINK);
+    expect(result.content.htmlContent).toBe(
+      `<section data-karakeep-owner-note><p>Final note</p></section><hr data-karakeep-owner-note>${html}`,
+    );
+    expect(result.content.url).toBe("https://example.com/notes-content");
+    const listed = (
+      await api.getBookmarks({ includeContent: true })
+    ).bookmarks.find((bookmark) => bookmark.id === created.id)!;
+    assert(listed.content.type === BookmarkTypes.LINK);
+    expect(listed.content.htmlContent).toBe(result.content.htmlContent);
+    expect(
+      db
+        .select()
+        .from(bookmarkLinks)
+        .where(eq(bookmarkLinks.id, created.id))
+        .get()!.htmlContent,
+    ).toBe(html);
+    const document = JSON.parse(
+      db
+        .select()
+        .from(extractedDocuments)
+        .where(eq(extractedDocuments.bookmarkId, created.id))
+        .get()!.document,
+    );
+    expect(document.ownerContent.text).toBe(
+      "Final note\n\n---\n\nCaptured article repository [https://example.com/repo].",
+    );
+
+    await api.updateBookmark({
+      bookmarkId: created.id,
+      note: '<img src=x onerror="alert(1)">',
+    });
+    const escaped = await api.getBookmark({
+      bookmarkId: created.id,
+      includeContent: true,
+    });
+    assert(escaped.content.type === BookmarkTypes.LINK);
+    expect(escaped.content.htmlContent).toContain(
+      "&lt;img src=x onerror=&quot;",
+    );
+    expect(escaped.content.htmlContent).not.toContain("<img");
+  });
+
   test<CustomTestContext>("keeps client metadata private when sharing a bookmark", async ({
     apiCallers,
     unauthedAPICaller,
+    db,
   }) => {
     const owner = apiCallers[0];
     const reader = apiCallers[1];
@@ -182,6 +319,46 @@ describe("Bookmark Routes", () => {
     expect(
       await reader.bookmarks.getBookmark({ bookmarkId: bookmark.id }),
     ).toMatchObject({ note: null, metadata: {} });
+    expect(
+      await reader.bookmarks.getBookmarkReadableContent({
+        bookmarkId: bookmark.id,
+        format: "text",
+      }),
+    ).toMatchObject({ content: "Shared content" });
+    const sharedLink = await owner.bookmarks.createBookmark({
+      type: BookmarkTypes.LINK,
+      url: "https://example.com/shared-note-content",
+      note: "Private link note",
+    });
+    await db
+      .update(bookmarkLinks)
+      .set({ htmlContent: "<p>Shared article</p>" })
+      .where(eq(bookmarkLinks.id, sharedLink.id));
+    await owner.lists.addToList({ listId: list.id, bookmarkId: sharedLink.id });
+    const sharedHtml = await reader.bookmarks.getBookmark({
+      bookmarkId: sharedLink.id,
+      includeContent: true,
+    });
+    assert(sharedHtml.content.type === BookmarkTypes.LINK);
+    expect(sharedHtml.content.htmlContent).toBe("<p>Shared article</p>");
+    const sharedList = await reader.bookmarks.getBookmarks({
+      listId: list.id,
+      includeContent: true,
+    });
+    const listedSharedLink = sharedList.bookmarks.find(
+      (item) => item.id === sharedLink.id,
+    )!;
+    assert(listedSharedLink.content.type === BookmarkTypes.LINK);
+    expect(listedSharedLink.note).toBeNull();
+    expect(listedSharedLink.content.htmlContent).toBe("<p>Shared article</p>");
+    expect(
+      (
+        await reader.bookmarks.getBookmarkReadableContent({
+          bookmarkId: sharedLink.id,
+          format: "text",
+        })
+      ).content,
+    ).toBe("Shared article");
     expect(
       (await owner.bookmarks.getBookmark({ bookmarkId: bookmark.id })).metadata,
     ).toEqual(bookmark.metadata);

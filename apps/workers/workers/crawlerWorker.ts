@@ -98,6 +98,8 @@ import { getRateLimitClient } from "@karakeep/shared/ratelimiting";
 import { tryCatch } from "@karakeep/shared/tryCatch";
 import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
 import { WebhooksService } from "@karakeep/trpc/models/webhooks.service";
+import { refreshBookmarkOwnerContent } from "@karakeep/trpc/lib/bookmarkNotes";
+import { htmlToPlainText } from "@karakeep/shared/utils/htmlUtils";
 
 import type { ParseSubprocessOutput } from "./utils/parseHtmlSubprocessIpc";
 import {
@@ -1095,6 +1097,7 @@ const crawlAndParseUrl = traced(
       htmlContentAssetInfo.result === "store_inline"
         ? (readableContent?.content ?? null)
         : null;
+    const extractedPlainText = htmlToPlainText(readableContent?.content ?? "");
     readableContent = null;
     await db.transaction((txn) => {
       txn
@@ -1172,6 +1175,8 @@ const crawlAndParseUrl = traced(
         assetIdsToDelete.push(oldAssets.contentAssetId);
       }
     });
+
+    await refreshBookmarkOwnerContent(db, bookmarkId, extractedPlainText);
 
     // Delete the old assets if any
     await Promise.all(

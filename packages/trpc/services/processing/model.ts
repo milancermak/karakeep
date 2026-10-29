@@ -9,6 +9,11 @@ import { digest } from "@karakeep/shared-server/work/ledger";
 import type { WorkJob } from "@karakeep/shared-server/work/ledger";
 import { workLedger } from "@karakeep/shared-server/work/runtime";
 import { Bookmark } from "../../models/bookmarks";
+import {
+  bookmarkSourceFingerprint,
+  ownerContent,
+  refreshBookmarkOwnerContent,
+} from "../../lib/bookmarkNotes";
 
 export function snapshot(id: string) {
   return db.query.bookmarks
@@ -28,12 +33,7 @@ export function snapshot(id: string) {
 export type Snapshot = NonNullable<Awaited<ReturnType<typeof snapshot>>>;
 
 export function sourceFingerprint(b: Snapshot): string {
-  return digest({
-    type: b.type,
-    url: b.link?.url,
-    text: b.text?.text,
-    assetId: b.asset?.assetId,
-  });
+  return bookmarkSourceFingerprint(b);
 }
 
 export function fingerprint(b: Snapshot): string {
@@ -86,6 +86,7 @@ export async function plainText(b: Snapshot): Promise<string> {
         parser: "existing",
         sourceUrl: b.link?.url ?? b.text?.sourceUrl ?? b.asset?.sourceUrl,
         htmlAssetId: b.link?.contentAssetId,
+        ownerContent: ownerContent(b.note, text),
       }),
       text,
       Date.now(),
@@ -222,6 +223,13 @@ export async function processDomainEvent(job: WorkJob): Promise<void> {
     return;
   }
   const b = snapshot(data.bookmarkId);
+  if (
+    b &&
+    (data.operation === "created" ||
+      (data.operation === "edited" && data.previousContext?.note !== b.note))
+  ) {
+    await refreshBookmarkOwnerContent(db, b.id);
+  }
   // There are no awaits inside this transaction: follow-up work and event
   // completion commit together, including the deletion tombstone payload.
   ledger.sqlite

@@ -1,3 +1,8 @@
+import {
+  createBookmarkSourceTextWalker,
+  isBookmarkOwnerNote,
+} from "./bookmark-content-dom";
+
 /**
  * Reading Progress Utilities
  *
@@ -155,11 +160,16 @@ function getReadingPositionWithViewport(
 ): ReadingPosition | null {
   const paragraphs = Array.from(
     container.querySelectorAll(PARAGRAPH_SELECTOR_STRING),
-  );
+  ).filter((paragraph) => !isBookmarkOwnerNote(paragraph));
   if (paragraphs.length === 0) return null;
 
   // Calculate total length for percentage calculation
-  const totalLength = normalizeTextLength(container.textContent ?? "");
+  const sourceWalker = createBookmarkSourceTextWalker(container);
+  let sourceText = "";
+  while (sourceWalker.nextNode()) {
+    sourceText += sourceWalker.currentNode.textContent ?? "";
+  }
+  const totalLength = normalizeTextLength(sourceText);
 
   // Check if scrolled to bottom - return 100% immediately
   if (scrollInfo) {
@@ -209,11 +219,7 @@ function getReadingPositionWithViewport(
   );
 
   // Calculate the text offset of this paragraph using TreeWalker
-  const walker = document.createTreeWalker(
-    container,
-    NodeFilter.SHOW_TEXT,
-    null,
-  );
+  const walker = createBookmarkSourceTextWalker(container);
 
   let offset = 0;
   let node: Node | null;
@@ -250,7 +256,7 @@ export function scrollToReadingPosition(
   if (anchor) {
     const paragraphs = Array.from(
       container.querySelectorAll(PARAGRAPH_SELECTOR_STRING),
-    );
+    ).filter((paragraph) => !isBookmarkOwnerNote(paragraph));
 
     let fuzzyMatch: Element | null = null;
     const anchorPrefix = anchor.slice(0, 20);
@@ -284,11 +290,7 @@ export function scrollToReadingPosition(
   }
 
   // Strategy 2: Fall back to offset-based lookup
-  const walker = document.createTreeWalker(
-    container,
-    NodeFilter.SHOW_TEXT,
-    null,
-  );
+  const walker = createBookmarkSourceTextWalker(container);
 
   let currentOffset = 0;
   let node: Node | null;

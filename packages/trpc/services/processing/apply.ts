@@ -36,6 +36,7 @@ import {
 } from "./model";
 import { applyFeed, runDomainOperation } from "./operations";
 import { stagingRoot } from "./prepare";
+import { ownerContent } from "../../lib/bookmarkNotes";
 
 function attachTags(bookmarkId: string, userId: string, names: string[]) {
   if (names.length === 0) return;
@@ -296,6 +297,7 @@ export async function completeJob(
             rawHtmlAssetId: published.find((a) => a.role === "linkRawHtml")?.id,
             artifacts: published.map((a) => ({ id: a.id, role: a.role })),
             contentHash: createHash("sha256").update(text).digest("hex"),
+            ownerContent: ownerContent(next.note, text),
           }),
           extractedAt: Date.now(),
         };

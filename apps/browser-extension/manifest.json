@@ -45,11 +45,18 @@
     "extension_pages": "script-src 'self'; object-src 'self'"
   },
   "permissions": ["storage", "tabs", "contextMenus", "activeTab", "scripting"],
+  "host_permissions": ["https://x.com/*", "https://twitter.com/*", "https://pbs.twimg.com/*"],
   "optional_host_permissions": ["<all_urls>"],
   "content_scripts": [
     {
       "matches": ["https://karakeep.invalid/*"],
       "js": ["src/content-scripts/singlefile-content-script.ts"],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": ["https://karakeep.invalid/x-capture"],
+      "js": ["src/content-scripts/x-capture-entry.ts"],
       "run_at": "document_idle",
       "all_frames": false
     }

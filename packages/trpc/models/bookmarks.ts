@@ -63,6 +63,10 @@ import { htmlToPlainText } from "@karakeep/shared/utils/htmlUtils";
 import { AuthedContext } from "..";
 import { mapDBAssetTypeToUserType } from "../lib/attachments";
 import { getPreferredLinkPreview } from "../lib/linkPreview";
+import {
+  prependBookmarkNote,
+  prependBookmarkNoteHtml,
+} from "../lib/bookmarkNotes";
 import { Asset } from "./assets";
 import { List } from "./lists";
 
@@ -809,6 +813,22 @@ export class Bookmark extends BareBookmark {
 
   asZBookmark(): ZBookmark {
     if (this.bookmark.userId === this.ctx.user.id) {
+      if (
+        this.bookmark.note?.trim() &&
+        this.bookmark.content.type === BookmarkTypes.LINK &&
+        this.bookmark.content.htmlContent != null
+      ) {
+        return {
+          ...this.bookmark,
+          content: {
+            ...this.bookmark.content,
+            htmlContent: prependBookmarkNoteHtml(
+              this.bookmark.content.htmlContent,
+              this.bookmark.note,
+            ),
+          },
+        };
+      }
       return this.bookmark;
     }
 
@@ -849,6 +869,9 @@ export class Bookmark extends BareBookmark {
         });
     }
 
+    if (this.bookmark.userId === this.ctx.user.id) {
+      content = prependBookmarkNote(content, this.bookmark.note);
+    }
     content = content.replace(/\r\n?/g, "\n").trim();
     const contentVersion = `sha256:${createHash("sha256")
       .update(format)

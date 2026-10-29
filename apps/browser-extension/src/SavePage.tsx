@@ -2,14 +2,18 @@ import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { BookmarkPlus, Link2 } from "lucide-react";
 import { Navigate } from "react-router-dom";
+import superjson from "superjson";
 
 import {
   BookmarkTypes,
   ZNewBookmarkRequest,
   zNewBookmarkRequestSchema,
+  zBookmarkSchema,
+  ZBookmark,
 } from "@karakeep/shared/types/bookmarks";
 
 import { NEW_BOOKMARK_REQUEST_KEY_NAME } from "./background/protocol";
+import { parseXTarget } from "./content-scripts/x-capture";
 import { ErrorCallout } from "./components/ErrorCallout";
 import { StatusMessage } from "./components/StatusMessage";
 import { Button } from "./components/ui/button";
@@ -30,6 +34,7 @@ export default function SavePage() {
   const { settings, isPending: isSettingsLoaded } = usePluginSettings();
   const [error, setError] = useState<string | undefined>(undefined);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [titleIsCustom, setTitleIsCustom] = useState(false);
   const [pendingBookmark, setPendingBookmark] =
     useState<ZNewBookmarkRequest | null>(null);
   const [hasCheckedRequest, setHasCheckedRequest] = useState(false);
@@ -40,33 +45,59 @@ export default function SavePage() {
     undefined,
   );
 
+  const createOptions = api.bookmarks.createBookmark.mutationOptions({
+    onError: (e) => {
+      setError(e.message);
+    },
+    onSuccess: async () => {
+      // After successful creation, update badge cache and notify background
+      try {
+        const [currentTab] = await chrome.tabs.query({
+          active: true,
+          lastFocusedWindow: true,
+        });
+        await chrome.runtime.sendMessage({
+          type: MessageType.BOOKMARK_REFRESH_BADGE,
+          currentTab: currentTab,
+        });
+      } catch {
+        // Badge refresh is best-effort — on Firefox Android the background
+        // script may not be reachable from the popup context.
+      }
+    },
+  });
   const {
     data,
     mutate: createBookmark,
     status,
-  } = useMutation(
-    api.bookmarks.createBookmark.mutationOptions({
-      onError: (e) => {
-        setError(e.message);
-      },
-      onSuccess: async () => {
-        // After successful creation, update badge cache and notify background
+  } = useMutation({
+    ...createOptions,
+    mutationFn: async (bookmark: ZNewBookmarkRequest, context) => {
+      if (bookmark.type === BookmarkTypes.LINK && parseXTarget(bookmark.url)) {
+        setIsCapturing(true);
         try {
-          const [currentTab] = await chrome.tabs.query({
-            active: true,
-            lastFocusedWindow: true,
+          const response = await chrome.runtime.sendMessage({
+            type: "KARAKEEP_SAVE_X",
+            bookmark,
+            tabId: currentTabId,
+            titleIsCustom,
           });
-          await chrome.runtime.sendMessage({
-            type: MessageType.BOOKMARK_REFRESH_BADGE,
-            currentTab: currentTab,
-          });
-        } catch {
-          // Badge refresh is best-effort — on Firefox Android the background
-          // script may not be reachable from the popup context.
+          if (!response?.success)
+            throw new Error(response?.error || "Couldn't capture this X page");
+          const saved = superjson.deserialize<
+            ZBookmark & { alreadyExists: boolean }
+          >(response.bookmark);
+          return {
+            ...zBookmarkSchema.parse(saved),
+            alreadyExists: saved.alreadyExists,
+          };
+        } finally {
+          setIsCapturing(false);
         }
-      },
-    }),
-  );
+      }
+      return createOptions.mutationFn!(bookmark, context);
+    },
+  });
 
   useEffect(() => {
     async function getNewBookmarkRequestFromBackgroundScriptIfAny(): Promise<ZNewBookmarkRequest | null> {
@@ -111,6 +142,26 @@ export default function SavePage() {
         };
       }
 
+      if (
+        newBookmarkRequest.type === BookmarkTypes.LINK &&
+        currentTab?.id !== undefined &&
+        parseXTarget(newBookmarkRequest.url)?.id ===
+          parseXTarget(currentTab.url ?? "")?.id &&
+        parseXTarget(newBookmarkRequest.url)
+      ) {
+        const titles = await chrome.scripting
+          .executeScript({
+            target: { tabId: currentTab.id },
+            func: () =>
+              document
+                .querySelector(
+                  '[data-testid="primaryColumn"] [data-testid="twitter-article-title"]',
+                )
+                ?.textContent?.trim() || null,
+          })
+          .catch(() => []);
+        if (titles[0]?.result) newBookmarkRequest.title = titles[0].result;
+      }
       setPendingBookmark(newBookmarkRequest);
       setHasCheckedRequest(true);
     }
@@ -126,6 +177,7 @@ export default function SavePage() {
     // case capturing the current page would attach the wrong archive.
     if (
       settings.useSingleFile &&
+      !(bookmark.type === BookmarkTypes.LINK && parseXTarget(bookmark.url)) &&
       currentTabId !== undefined &&
       bookmark.type === BookmarkTypes.LINK &&
       !bookmark.precrawledArchiveId &&
@@ -236,11 +288,12 @@ export default function SavePage() {
                 <Input
                   id="bookmark-title"
                   value={pendingBookmark.title ?? ""}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    setTitleIsCustom(true);
                     setPendingBookmark((prev) =>
                       prev ? { ...prev, title: e.target.value } : prev,
-                    )
-                  }
+                    );
+                  }}
                   placeholder="Untitled"
                 />
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground">

@@ -30,30 +30,23 @@ Alternatively, you can use Docker Compose to run the full stack in containers â€
 
 ## Manual Setup
 
-Karakeep uses `node` version 24. To install it, you can use `nvm` [^1]
+Karakeep uses Node.js 26 LTS (26.13.0 or newer). Install it with `fnm` [^1]
+from the repository root, where `.nvmrc` selects the required major version:
 
-```
-$ nvm install 24
-```
-
-Verify node version using this command:
-```
-$ node --version
-v24.0.0
+```sh
+fnm install
+fnm use
+node --version
 ```
 
-Karakeep also makes use of `corepack`[^2]. If you have `node` installed, then `corepack` should already be
-installed on your machine, and you don't need to do anything. To verify the `corepack` is installed run:
+Install pnpm using its [installation instructions](https://pnpm.io/installation).
+pnpm selects the version pinned in the root `package.json`. Corepack is optional;
+it is no longer bundled with Node.js 26. If you use Corepack to manage pnpm,
+install and enable it explicitly:
 
-```
-$ command -v corepack
-/home/<user>/.nvm/versions/node/v22.14.0/bin/corepack
-```
-
-To enable `corepack` run the following command:
-
-```
-$ corepack enable
+```sh
+npm install -g corepack@latest
+corepack enable pnpm
 ```
 
 Then, from the root of the repository, install the packages and dependencies using:
@@ -239,8 +232,4 @@ Every environment value is defined with `${VAR:-default}` syntax, so the stack b
 
 You can override the default `/data` mount by editing `DATA_DIR` in `.env` and binding a host directory via a regular Docker volume mapping. Any other environment variable defined in `.env` is automatically propagated to the Node services.
 
-[^1]: [nvm](https://github.com/nvm-sh/nvm) is a node version manager. You can install it following [these
-instructions](https://github.com/nvm-sh/nvm?tab=readme-ov-file#installing-and-updating).
-
-[^2]: [corepack](https://nodejs.org/api/corepack.html) is an experimental tool to help with managing versions of your
-package managers.
+[^1]: [fnm](https://github.com/Schniz/fnm) manages Node.js versions and reads `.nvmrc`.

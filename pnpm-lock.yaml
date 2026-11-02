@@ -35,8 +35,8 @@ importers:
         version: 9.1.7
     devDependencies:
       '@types/node':
-        specifier: ^24
-        version: 24.10.3
+        specifier: ^26
+        version: 26.6.1
       oxfmt:
         specifier: ^0.72.0
         version: 0.72.0
@@ -1713,8 +1713,8 @@ importers:
         version: 4.3.6
     devDependencies:
       '@types/node':
-        specifier: ^24
-        version: 24.10.3
+        specifier: ^26
+        version: 26.6.1
       tsx:
         specifier: ^4.23.13
         version: 4.23.13
@@ -24187,7 +24187,7 @@ snapshots:
 
   '@types/adm-zip@0.5.7':
     dependencies:
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
 
   '@types/archiver@7.0.0':
     dependencies:
@@ -24222,7 +24222,7 @@ snapshots:
 
   '@types/better-sqlite3@7.6.13':
     dependencies:
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
 
   '@types/body-parser@1.19.6':
     dependencies:
@@ -24231,7 +24231,7 @@ snapshots:
 
   '@types/bonjour@3.5.13':
     dependencies:
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
 
   '@types/cacheable-request@6.0.3':
     dependencies:
@@ -24252,11 +24252,11 @@ snapshots:
   '@types/connect-history-api-fallback@1.5.4':
     dependencies:
       '@types/express-serve-static-core': 4.19.9
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
 
   '@types/connect@3.4.38':
     dependencies:
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
 
   '@types/d3-array@3.2.2': {}
 
@@ -24397,7 +24397,7 @@ snapshots:
 
   '@types/express-serve-static-core@4.19.9':
     dependencies:
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
       '@types/qs': 6.15.1
       '@types/range-parser': 1.2.7
       '@types/send': 1.2.1
@@ -24464,7 +24464,7 @@ snapshots:
 
   '@types/jsdom@21.1.7':
     dependencies:
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
       '@types/tough-cookie': 4.0.5
       parse5: 7.3.0
 
@@ -24474,7 +24474,7 @@ snapshots:
 
   '@types/keyv@3.1.4':
     dependencies:
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
 
   '@types/mdast@4.0.4':
     dependencies:
@@ -24506,7 +24506,7 @@ snapshots:
 
   '@types/nodemailer@6.4.17':
     dependencies:
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
 
   '@types/parse-json@4.0.2': {}
 
@@ -24555,11 +24555,11 @@ snapshots:
 
   '@types/readdir-glob@1.1.5':
     dependencies:
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
 
   '@types/request-ip@0.0.41':
     dependencies:
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
 
   '@types/responselike@1.0.3':
     dependencies:
@@ -24571,16 +24571,16 @@ snapshots:
 
   '@types/sax@1.2.7':
     dependencies:
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
 
   '@types/send@0.17.6':
     dependencies:
       '@types/mime': 1.3.5
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
 
   '@types/send@1.2.1':
     dependencies:
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
 
   '@types/serve-index@1.9.4':
     dependencies:
@@ -24589,12 +24589,12 @@ snapshots:
   '@types/serve-static@1.15.10':
     dependencies:
       '@types/http-errors': 2.0.5
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
       '@types/send': 0.17.6
 
   '@types/sockjs@0.3.36':
     dependencies:
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
 
   '@types/tough-cookie@4.0.5': {}
 
@@ -24615,7 +24615,7 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
 
   '@types/yargs-parser@21.0.3': {}
 
@@ -25766,7 +25766,7 @@ snapshots:
 
   chrome-launcher@0.15.2:
     dependencies:
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
       escape-string-regexp: 4.0.0
       is-wsl: 2.2.0
       lighthouse-logger: 1.4.2
@@ -25777,7 +25777,7 @@ snapshots:
 
   chromium-edge-launcher@0.3.0:
     dependencies:
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
       escape-string-regexp: 4.0.0
       is-wsl: 2.2.0
       lighthouse-logger: 1.4.2
@@ -27137,7 +27137,7 @@ snapshots:
 
   eval@0.1.8:
     dependencies:
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
       require-like: 0.1.2
 
   event-target-shim@5.0.1: {}
@@ -28784,7 +28784,7 @@ snapshots:
 
   jest-worker@29.7.0:
     dependencies:
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
       jest-util: 29.7.0
       merge-stream: 2.0.0
       supports-color: 8.1.1
@@ -31879,7 +31879,7 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.1
-      '@types/node': 24.10.3
+      '@types/node': 26.6.1
       long: 5.3.2
 
   proxy-addr@2.0.8:

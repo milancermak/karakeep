@@ -19,6 +19,9 @@ exercises it through the real crawler:
 pnpm --filter @karakeep/e2e_tests test
 ```
 
+The Playwright test driver uses installed Chrome Stable with Chromium sandboxing enabled.
+On Briq, set `KARAKEEP_TEST_CHROMIUM=/usr/bin/chromium` to use the patched system Chromium.
+
 The crawler tests cover Playwright compatibility, context creation, local-page
 navigation, JavaScript execution, request routing, the CDP redirect guard,
 screenshots, and PDFs. The image workflow verifies that the image builds on both

@@ -80,9 +80,9 @@ jobs:
       #   working-directory: packages/plugins
       #   run: pnpm test
 
-      - name: Install Playwright Chromium
+      - name: Install Chrome for Playwright
         working-directory: packages/e2e_tests
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chrome
 
       # The default docker driver can't import the registry build cache that
       # the e2e docker-compose file uses, so build with a buildx builder.

@@ -9,7 +9,11 @@ export const it = base.extend<{ page: Page }>({
   // Vitest requires destructuring, even when no other fixtures are needed.
   // oxlint-disable-next-line no-empty-pattern
   page: async ({}, use) => {
-    const browser = await chromium.launch();
+    const executablePath = process.env.KARAKEEP_TEST_CHROMIUM;
+    const browser = await chromium.launch({
+      ...(executablePath ? { executablePath } : { channel: "chrome" }),
+      chromiumSandbox: true,
+    });
     try {
       const page = await browser.newPage({
         baseURL: `http://localhost:${inject("karakeepPort")}`,

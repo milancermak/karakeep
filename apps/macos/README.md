@@ -27,6 +27,9 @@ In Settings, enter the server’s HTTPS URL and a Karakeep API key. Create a key
 the server’s Settings → API Keys with `bookmarks:readwrite`, `assets:readwrite`,
 and `users:read` permissions. Legacy full-access keys also work. The key is kept
 in macOS Keychain. The account is verified with `/api/v1/users/me` when connecting.
+Settings shows masked dots when a key is stored for the configured server.
+Reconnect reuses that key unless you type a replacement. Private Tailscale servers
+require Tailscale to be connected on this Mac.
 HTTP is accepted only for localhost development. Use the server’s final URL;
 authenticated requests do not follow redirects.
 

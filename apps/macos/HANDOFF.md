@@ -78,6 +78,36 @@ and the generated specification describe the binary attachment behavior.
 
 ## Validation
 
+### Saved API-key indicator (2026-11-05)
+
+Settings now shows masked dots when the configured server has a saved Keychain
+entry. The presence check uses the same generic-password service/account identity
+as credential reads, but requests only `kSecReturnAttributes`; it does not load the
+secret into the view. A different server address hides the cue. A successful
+connection or disconnect updates it, and reopening Settings checks Keychain again.
+The dots are a placeholder, so Reconnect still reads the saved key and never sends
+the visual cue as a credential. Typed replacements remain ordinary secure input.
+
+Checked against Apple’s current
+[SecItemCopyMatching documentation](https://developer.apple.com/documentation/security/secitemcopymatching(_:_:)),
+[kSecReturnAttributes documentation](https://developer.apple.com/documentation/security/ksecreturnattributes),
+and the installed macOS 26.2 Security headers, using Swift 6.2.4 / Swift language
+mode 6. This keeps the existing macOS Keychain storage and signing policy.
+The reported connection failure was accompanied by a failed private-hostname DNS
+lookup; the matching Keychain entry and both saved captures were still present.
+The user reported Tailscale had not been running. No credential was deleted or
+replaced during diagnosis.
+
+All 14 Swift tests passed (the optional live-server test was skipped), along with
+the release build, Swift formatting, whitespace, and bundle-signature checks.
+A temporary native Settings host verified the actual saved-entry lookup, secure
+field type, placeholder updates when switching server addresses, and absence of
+the secret from the field value. A screen capture of that preview was unavailable,
+so its appearance was not verified from a screenshot. The rebuilt app was
+restarted; hashes confirmed the draft, settings, and history files were unchanged.
+
+### Original implementation
+
 - Native debug and release builds; an ad-hoc signed `.app` bundle.
 - Swift tests for draft/file persistence, one-note/multiple-attachment saves,
   resumed partial saves, account/history isolation, ordering, screenshot

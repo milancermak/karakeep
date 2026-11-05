@@ -67,6 +67,14 @@ public struct CaptureStore: Sendable {
 
 public enum Credentials {
   private static let service = "app.karakeep.capture.api-key"
+  public static func contains(server: ServerAddress) throws -> Bool {
+    var query = identity(server)
+    query[kSecReturnAttributes] = true
+    let status = SecItemCopyMatching(query as CFDictionary, nil)
+    if status == errSecItemNotFound { return false }
+    guard status == errSecSuccess else { throw failure(status) }
+    return true
+  }
   public static func read(server: ServerAddress) throws -> String? {
     var query = identity(server)
     query[kSecReturnData] = true

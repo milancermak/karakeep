@@ -13,6 +13,7 @@ final class AppModel: ObservableObject {
   @Published var connecting = false
   @Published var error: String?
   @Published var settingsError: String?
+  @Published var hasSavedAPIKey = false
   @Published var saved = false
   @Published var showingHistory = false
   @Published var loginItemStatus = SMAppService.mainApp.status
@@ -47,6 +48,18 @@ final class AppModel: ObservableObject {
 
   func refreshLoginItemStatus() {
     loginItemStatus = SMAppService.mainApp.status
+  }
+
+  func refreshSavedAPIKeyStatus() {
+    guard let server = settings.server else {
+      hasSavedAPIKey = false
+      return
+    }
+    Task {
+      do {
+        hasSavedAPIKey = try await Task.detached { try Credentials.contains(server: server) }.value
+      } catch { settingsError = error.localizedDescription }
+    }
   }
 
   func setLaunchAtLogin(_ enabled: Bool) {
@@ -215,6 +228,7 @@ final class AppModel: ObservableObject {
         next.user = user
         try store.write(next, to: "settings")
         settings = next
+        hasSavedAPIKey = true
         client = api
         history = try store.history(for: next.accountKey!)
       } catch { settingsError = error.localizedDescription }
@@ -237,6 +251,7 @@ final class AppModel: ObservableObject {
         next.user = nil
         try store.write(next, to: "settings")
         settings = next
+        hasSavedAPIKey = false
         client = nil
         history = []
       } catch { settingsError = error.localizedDescription }

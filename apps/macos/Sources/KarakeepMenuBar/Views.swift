@@ -148,8 +148,13 @@ struct SettingsView: View {
           ).frame(maxWidth: .infinity)
         }
         LabeledContent("API key") {
-          SettingsTextField(text: $apiKey, secure: true, label: "API key", identifier: "apiKey")
-            .frame(maxWidth: .infinity)
+          SettingsTextField(
+            text: $apiKey, secure: true,
+            placeholder: model.hasSavedAPIKey
+              && (try? ServerAddress(address)) == model.settings.server
+              ? "••••••••" : nil,
+            label: "API key", identifier: "apiKey"
+          ).frame(maxWidth: .infinity)
         }
         HStack {
           Button(model.settings.user == nil ? "Connect" : "Reconnect") {
@@ -197,6 +202,7 @@ struct SettingsView: View {
     .disabled(model.connecting || model.saving)
     .onAppear {
       address = model.settings.server?.key ?? ""
+      model.refreshSavedAPIKeyStatus()
       model.refreshLoginItemStatus()
     }
     .onChange(of: model.settings.server) { _, server in
@@ -239,6 +245,7 @@ struct SettingsTextField: NSViewRepresentable {
   func updateNSView(_ field: NSTextField, context: Context) {
     context.coordinator.parent = self
     if field.stringValue != text { field.stringValue = text }
+    field.placeholderString = placeholder
     field.alignment = .left
     field.currentEditor()?.alignment = .left
     field.isEnabled = context.environment.isEnabled

@@ -73,12 +73,6 @@ export function NoteEditor({ bookmarkId }: { bookmarkId: string }) {
           }
         }}
       />
-      {!showStatusRow && noteValue && (
-        <p className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Check className="size-3.5 text-green-600 dark:text-green-500" />
-          Saved
-        </p>
-      )}
       {showStatusRow && (
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0 flex-1 text-xs">

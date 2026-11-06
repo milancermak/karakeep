@@ -52,6 +52,9 @@ export async function saveXBookmark(
       | { success: false; error: string };
     if (!response.success) throw new Error(response.error);
     const capture = response.capture;
+    if (capture.metadata.x.requestedPostId !== target.id) {
+      throw new Error("The captured X post does not match the bookmark URL.");
+    }
     if (capture.metadata.capture.status !== "complete") {
       throw new Error(
         capture.metadata.capture.reason ||

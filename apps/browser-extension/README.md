@@ -89,6 +89,39 @@ On-demand standalone capture scripts run their updated code on the next capture;
 existing injected scripts may need their host page reloaded. Use `pnpm build` for
 a standalone production build in `dist`.
 
+## Saving from the keyboard
+
+Command+Enter submits the save form from the title or note field in both browser
+builds. Control+Enter also works, matching the note editor. Enter alone keeps its
+normal text-editing behavior. The shortcut closes the popup after a successful
+save. A failed save leaves the form open for retry.
+
+The shortcut shares the Save button's handler and uses the same
+[`window.close()`](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/user_interface/Popups)
+API as the popup's Close button. No dependency or permission changes are needed.
+
+Validated on 2026-10-30: 41 extension tests, typecheck, lint, formatting, and both
+production builds passed. Eight checks in headless Firefox 158.0.1 exercised both
+bundles with real keystrokes and synthetic API responses, including saving from
+both fields, note newlines, failed-save retries, and selected text. Chrome itself
+and live production accounts were not used for these shortcut checks.
+
+## Saved-page detection
+
+Both browser builds check `bookmarks.checkUrl` when the popup opens, before
+capturing a page or saving a link. A match opens the existing bookmark editor
+without re-saving it, changing its title, or moving it in the library. This
+lookup runs independently of the optional toolbar badge and its cache. X/Twitter
+links use the same canonical URL as the X capture flow.
+
+A failed lookup keeps the form and offers a retry; it does not trigger a capture
+or save. Selected text is still saved as a new text bookmark.
+
+The popup regression tests use the existing React SWC plugin (4.3.3) with Vitest
+4.1.11 to exercise the real component and tRPC client. No dependency upgrade is
+needed. The Chrome and Firefox bundles are also exercised in headless Firefox
+against synthetic server responses; live production accounts are not used.
+
 ## Contract and validation
 
 The workspace lockfile pins CRXJS 3.0.0 and Vite 8.3.0. The Firefox runner pins

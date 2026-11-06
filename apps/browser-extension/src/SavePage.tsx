@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { KeyboardEvent, useEffect, useRef, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { BookmarkPlus, Link2 } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import superjson from "superjson";
@@ -14,11 +14,11 @@ import {
 
 import { NEW_BOOKMARK_REQUEST_KEY_NAME } from "./background/protocol";
 import { parseXTarget } from "./content-scripts/x-capture";
-import { ErrorCallout } from "./components/ErrorCallout";
 import { StatusMessage } from "./components/StatusMessage";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { Textarea } from "./components/ui/textarea";
+import Spinner from "./Spinner";
 import { hasHostPermission } from "./utils/permissions";
 import usePluginSettings from "./utils/settings";
 import {
@@ -34,6 +34,7 @@ export default function SavePage() {
   const { settings, isPending: isSettingsLoaded } = usePluginSettings();
   const [error, setError] = useState<string | undefined>(undefined);
   const [isCapturing, setIsCapturing] = useState(false);
+  const closeAfterSave = useRef(false);
   const [titleIsCustom, setTitleIsCustom] = useState(false);
   const [pendingBookmark, setPendingBookmark] =
     useState<ZNewBookmarkRequest | null>(null);
@@ -44,6 +45,24 @@ export default function SavePage() {
   const [currentTabUrl, setCurrentTabUrl] = useState<string | undefined>(
     undefined,
   );
+  const bookmarkUrl =
+    pendingBookmark?.type === BookmarkTypes.LINK
+      ? (parseXTarget(pendingBookmark.url)?.url ?? pendingBookmark.url)
+      : undefined;
+  const existingBookmark = useQuery(
+    api.bookmarks.checkUrl.queryOptions(
+      { url: bookmarkUrl ?? "" },
+      {
+        enabled: hasCheckedRequest && bookmarkUrl !== undefined,
+        staleTime: 0,
+        refetchOnWindowFocus: false,
+        retry: false,
+      },
+    ),
+  );
+  const isCheckingBookmark =
+    bookmarkUrl !== undefined &&
+    (existingBookmark.isPending || existingBookmark.isFetching);
 
   const createOptions = api.bookmarks.createBookmark.mutationOptions({
     onError: (e) => {
@@ -64,6 +83,7 @@ export default function SavePage() {
         // Badge refresh is best-effort — on Firefox Android the background
         // script may not be reachable from the popup context.
       }
+      if (closeAfterSave.current) window.close();
     },
   });
   const {
@@ -171,6 +191,7 @@ export default function SavePage() {
   }, [isSettingsLoaded]);
 
   const saveBookmark = async (bookmark: ZNewBookmarkRequest) => {
+    setError(undefined);
     let finalBookmark = bookmark;
     // Only crawl when the bookmark target matches the active tab — context-menu
     // saves (link/src URL) may create a bookmark for a different URL, in which
@@ -219,6 +240,9 @@ export default function SavePage() {
       settings.autoSave &&
       status === "idle" &&
       !isCapturing &&
+      !isCheckingBookmark &&
+      !existingBookmark.error &&
+      !existingBookmark.data?.bookmarkId &&
       !error
     ) {
       saveBookmark(pendingBookmark);
@@ -230,132 +254,164 @@ export default function SavePage() {
     settings.autoSave,
     status,
     isCapturing,
+    isCheckingBookmark,
+    existingBookmark.error,
+    existingBookmark.data?.bookmarkId,
     error,
   ]);
 
-  const handleManualSave = () => {
-    if (pendingBookmark) {
+  const isSaving = isCheckingBookmark || isCapturing || status === "pending";
+  const saveError = error ?? existingBookmark.error?.message;
+
+  const handleManualSave = async (closeOnSuccess = false) => {
+    if (pendingBookmark && !isSaving) {
+      closeAfterSave.current = closeOnSuccess;
+      if (existingBookmark.error) {
+        const result = await existingBookmark.refetch();
+        if (result.error || result.data?.bookmarkId || settings.autoSave) {
+          return;
+        }
+      }
       saveBookmark(pendingBookmark);
     }
   };
 
-  if (error) {
-    return <ErrorCallout title="Couldn't save this page">{error}</ErrorCallout>;
+  const handleSaveShortcut = (
+    e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => {
+    if (
+      e.key === "Enter" &&
+      (e.metaKey || e.ctrlKey) &&
+      !e.nativeEvent.isComposing
+    ) {
+      e.preventDefault();
+      handleManualSave(true);
+    }
+  };
+
+  if (existingBookmark.data?.bookmarkId) {
+    return <Navigate to={`/bookmark/${existingBookmark.data.bookmarkId}`} />;
   }
 
-  const pendingLabel =
-    pendingBookmark?.type === BookmarkTypes.LINK
-      ? pendingBookmark.url
-      : pendingBookmark?.type === BookmarkTypes.TEXT
-        ? pendingBookmark.text
-        : pendingBookmark?.fileName;
-
-  if (isCapturing) {
-    return <StatusMessage label="Capturing page…" detail={pendingLabel} />;
+  if (status === "success") {
+    return <Navigate to={`/bookmark/${data.id}`} />;
   }
 
-  switch (status) {
-    case "error": {
-      return (
-        <ErrorCallout title="Couldn't save this page">{error}</ErrorCallout>
-      );
-    }
-    case "success": {
-      return <Navigate to={`/bookmark/${data.id}`} />;
-    }
-    case "pending": {
-      return (
-        <StatusMessage label="Saving to Karakeep…" detail={pendingLabel} />
-      );
-    }
-    case "idle": {
-      // Show confirmation UI when autoSave is disabled
-      if (!settings.autoSave && pendingBookmark && hasCheckedRequest) {
-        return (
-          <form
-            className="flex flex-col gap-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleManualSave();
-            }}
-          >
-            <h2 className="text-base font-semibold">Save to Karakeep</h2>
-            {pendingBookmark.type === BookmarkTypes.LINK && (
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="bookmark-title" className="text-sm font-medium">
-                  Title
-                </label>
-                <Input
-                  id="bookmark-title"
-                  value={pendingBookmark.title ?? ""}
-                  onChange={(e) => {
-                    setTitleIsCustom(true);
-                    setPendingBookmark((prev) =>
-                      prev ? { ...prev, title: e.target.value } : prev,
-                    );
-                  }}
-                  placeholder="Untitled"
-                />
-                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Link2 className="size-3.5 shrink-0" />
-                  <span className="truncate">{pendingBookmark.url}</span>
-                </p>
-              </div>
-            )}
-            {pendingBookmark.type === BookmarkTypes.TEXT && (
-              <div className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium">Text</span>
-                <p className="line-clamp-4 whitespace-pre-wrap rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
-                  {pendingBookmark.text}
-                </p>
-              </div>
-            )}
-            {pendingBookmark.type === BookmarkTypes.ASSET && (
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="bookmark-title" className="text-sm font-medium">
-                  Title
-                </label>
-                <Input
-                  id="bookmark-title"
-                  value={pendingBookmark.title ?? ""}
-                  onChange={(e) =>
-                    setPendingBookmark((prev) =>
-                      prev ? { ...prev, title: e.target.value } : prev,
-                    )
-                  }
-                  placeholder={pendingBookmark.fileName ?? "Asset"}
-                />
-              </div>
-            )}
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="bookmark-note" className="text-sm font-medium">
-                Note{" "}
-                <span className="font-normal text-muted-foreground">
-                  (optional)
-                </span>
-              </label>
-              <Textarea
-                id="bookmark-note"
-                value={pendingBookmark.note ?? ""}
-                onChange={(e) =>
-                  setPendingBookmark((prev) =>
-                    prev ? { ...prev, note: e.target.value } : prev,
-                  )
-                }
-                placeholder="Why are you saving this?"
-                className="h-20 resize-none"
-              />
-            </div>
-            <Button type="submit" className="w-full gap-2">
-              <BookmarkPlus className="size-4" />
-              Save bookmark
-            </Button>
-          </form>
-        );
-      }
-      return (
-        <StatusMessage label="Saving to Karakeep…" detail={pendingLabel} />
-      );
-    }
+  if (!pendingBookmark || !hasCheckedRequest) {
+    return error ? (
+      <p role="alert" className="break-words text-sm text-destructive">
+        {error}
+      </p>
+    ) : (
+      <StatusMessage label="Loading…" />
+    );
   }
+
+  return (
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        handleManualSave();
+      }}
+    >
+      <fieldset disabled={isSaving} className="flex min-w-0 flex-col gap-4">
+        {pendingBookmark.type === BookmarkTypes.LINK && (
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="bookmark-title" className="text-sm font-medium">
+              Title
+            </label>
+            <Input
+              id="bookmark-title"
+              onKeyDown={handleSaveShortcut}
+              value={pendingBookmark.title ?? ""}
+              onChange={(e) => {
+                setTitleIsCustom(true);
+                setPendingBookmark((prev) =>
+                  prev ? { ...prev, title: e.target.value } : prev,
+                );
+              }}
+              placeholder="Untitled"
+            />
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Link2 className="size-3.5 shrink-0" />
+              <span className="truncate">{pendingBookmark.url}</span>
+            </p>
+          </div>
+        )}
+        {pendingBookmark.type === BookmarkTypes.TEXT && (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium">Text</span>
+            <p className="line-clamp-4 whitespace-pre-wrap rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+              {pendingBookmark.text}
+            </p>
+          </div>
+        )}
+        {pendingBookmark.type === BookmarkTypes.ASSET && (
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="bookmark-title" className="text-sm font-medium">
+              Title
+            </label>
+            <Input
+              id="bookmark-title"
+              onKeyDown={handleSaveShortcut}
+              value={pendingBookmark.title ?? ""}
+              onChange={(e) =>
+                setPendingBookmark((prev) =>
+                  prev ? { ...prev, title: e.target.value } : prev,
+                )
+              }
+              placeholder={pendingBookmark.fileName ?? "Asset"}
+            />
+          </div>
+        )}
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="bookmark-note" className="text-sm font-medium">
+            Note{" "}
+            <span className="font-normal text-muted-foreground">
+              (optional)
+            </span>
+          </label>
+          <Textarea
+            id="bookmark-note"
+            onKeyDown={handleSaveShortcut}
+            value={pendingBookmark.note ?? ""}
+            onChange={(e) =>
+              setPendingBookmark((prev) =>
+                prev ? { ...prev, note: e.target.value } : prev,
+              )
+            }
+            placeholder="Why are you saving this?"
+            className="h-20 resize-none"
+          />
+        </div>
+        {(!settings.autoSave ||
+          status === "error" ||
+          existingBookmark.error) && (
+          <Button type="submit" className="w-full gap-2">
+            <BookmarkPlus aria-hidden="true" className="size-4" />
+            {existingBookmark.error ? "Try again" : "Save bookmark"}
+          </Button>
+        )}
+      </fieldset>
+      {isSaving && (
+        <p
+          role="status"
+          className="flex items-center gap-1.5 text-xs text-muted-foreground"
+        >
+          <Spinner className="size-3.5" />
+          {isCheckingBookmark
+            ? "Checking…"
+            : isCapturing
+              ? "Capturing…"
+              : "Saving…"}
+        </p>
+      )}
+      {saveError && !isCheckingBookmark && (
+        <p role="alert" className="break-words text-sm text-destructive">
+          {saveError}
+        </p>
+      )}
+    </form>
+  );
 }

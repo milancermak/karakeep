@@ -67,9 +67,6 @@ if (!window.__karakeepXCaptureLoaded__) {
       dialog.showModal();
       captureXPage({
         signal: controller.signal,
-        onProgress: (progress) => {
-          if (label) label.textContent = progress.label;
-        },
       })
         .then((capture) => sendResponse({ success: true, capture }))
         .catch((error) =>

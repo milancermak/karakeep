@@ -4,14 +4,22 @@ Saving an HTTPS `x.com` or `twitter.com` status or article through the extension
 toolbar, shortcut, or link context menu invokes the browser collector. It uses
 the signed-in browser session and rendered DOM; no paid X API is involved.
 
-The current implementation runs in the foreground with a capture dialog. It
-scrolls the page, expands long post text, collects the original author's connected
-thread in order, and excludes other authors' replies and quoted-post content.
+The collector takes a snapshot of the rendered conversation. It includes the
+requested post, any preceding connected posts by the same author, and the
+posts and replies already rendered below it in the main column. It identifies
+each post by its own permalink, timestamp, views link, or media link. Links in
+post bodies, previews, and quotes do not establish identity. A row whose own
+links disagree is skipped. The save handler checks the captured ID against the
+bookmark URL before uploading the archive. The collector tries
+inline text expansion once for each included post. If only replies are mounted
+and the page is scrolled down, it keeps the rendered replies, jumps to the top
+once to recover the original post, and restores the prior scroll position.
+It does not scroll through the thread to load more replies. Quoted-post content
+is excluded.
 Article saves preserve the full rendered article body and use its full heading
 as the bookmark title unless the user edits the title. A context-menu target
-opens in an active tab when the current tab is a different post. The original
-scroll position is restored when collection ends. Cancel or Escape stops
-collection; errors leave the save available for retry.
+opens in an active tab when the current tab is a different post. Cancel or
+Escape stops collection. Errors leave the save available for retry.
 
 The archive contains source content and bylines, without the owner's note.
 The server composes personal notes into owner-readable content separately; see
@@ -31,7 +39,7 @@ The bookmark's normal content/archive stores the body. Its metadata records:
 | `capture.method` | `x-dom` |
 | `capture.pageTitle` | Capture title |
 | `capture.capturedAt` | UTC capture timestamp |
-| `capture.status` | `complete` for saved captures |
+| `capture.status` | `complete` when the snapshot was captured successfully |
 | `capture.imagesEmbedded`, `capture.imagesFailed` | Image archival counts |
 | `capture.metadataTruncated` | Present when metadata lists were shortened |
 | `source.author`, `source.url` | Original author and canonical requested URL |
@@ -57,11 +65,9 @@ The metadata contract and search projection are documented in
 
 ## Limits
 
-Collection has a 60-second deadline and a 500-post ceiling. It stops when X
-exposes a stable article or an apparent thread boundary. If X does not reveal
-enough content to establish completion, the extension rejects the partial capture
-and shows an error. Login challenges, unavailable posts, hidden continuations,
-and X DOM changes can still require a reload or implementation update.
+Collection waits at most five seconds for the requested post or rendered
+article body. A missing post produces a retryable error. A successful snapshot
+can omit replies X hasn't rendered or has removed from the DOM while scrolling.
 
 Short-link resolution has a 15-second total budget and at most five seconds per
 link. Images have a 15-second request timeout, a 10 MiB per-image limit, and a
@@ -73,6 +79,27 @@ Metadata is trimmed below 60,000 UTF-8 bytes to leave room under the server's
 Existing unrelated bookmark metadata is preserved by the server's merge rules.
 
 ## Development and validation
+
+The post identity change passed 47 extension tests and both browser builds.
+The built collector captured the reported URL's ID and a loaded reply in a
+headless Firefox 158.0.1 fixture with an unlinked timestamp, a views link, and a
+quoted copy of the requested post. The exact signed-in X page remains unverified.
+The [X permalink](https://help.x.com/en/using-x/post-and-moment-url) and
+[view-count](https://help.x.com/en/using-x/view-counts) documentation describe
+these controls. X does not document their page markup as a stable interface.
+
+On 2026-11-05, 42 extension tests and both browser builds passed. In headless
+Firefox 158.0.1, the built collector recovered a fixture post mounted on scroll,
+kept the replies from both positions, and restored the original scroll position.
+The public X page did not expose the signed-in conversation DOM, so the reported
+post remains unverified in that session. Recovery uses the standard
+[`window.scrollTo()` API](https://developer.mozilla.org/en-US/docs/Web/API/Window/scrollTo).
+
+On 2026-11-04, 41 extension tests and both browser builds passed. The built
+collector also captured a fixture post and its loaded reply in headless Firefox
+158.0.1 while a reply loader remained on screen. The public X page for
+status `2117763281389543776` did not expose the signed-in conversation DOM in
+that browser, so the exact live capture remains unverified.
 
 [`apps/browser-extension/README.md`](../apps/browser-extension/README.md) describes
 the Firefox build watcher and Chrome development reload. Development Firefox

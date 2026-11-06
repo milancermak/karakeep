@@ -223,6 +223,16 @@ describe("X save contract", () => {
     });
   });
 
+  test("rejects a capture for a different post before uploading", async () => {
+    capture.metadata.x.requestedPostId = "999";
+
+    await expect(saveXBookmark({ type: "link", url }, 7)).rejects.toThrow(
+      "The captured X post does not match the bookmark URL.",
+    );
+    expect(mocks.upload).not.toHaveBeenCalled();
+    expect(api.bookmarks.createBookmark.mutate).not.toHaveBeenCalled();
+  });
+
   test("replaces an old capture before requesting extraction of the new archive", async () => {
     saved.alreadyExists = true;
     saved.assets = [

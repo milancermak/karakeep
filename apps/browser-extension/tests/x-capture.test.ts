@@ -7,7 +7,6 @@ import {
   captureXPage,
   parseXTarget,
   readXPosts,
-  selectXThread,
 } from "../src/content-scripts/x-capture";
 
 function post(id: string, author: string, content: string) {
@@ -158,13 +157,20 @@ describe("X post DOM", () => {
 
   test("does not use a quoted post as the identity or body of an empty quote-post", () => {
     document.body.innerHTML =
-      '<main data-testid="primaryColumn"><article data-testid="tweet"><div role="link"><a role="link" href="/quoted/status/9"><time></time></a><div data-testid="tweetText">Quoted only</div></div><a role="link" href="/author/status/200"><time></time></a></article></main>';
+      '<main data-testid="primaryColumn"><article data-testid="tweet"><div role="link"><a role="link" href="/quoted/status/9"><time></time></a><div data-testid="tweetText">Quoted only</div><div data-testid="twitterArticleRichTextView">Quoted article body</div></div><a role="link" href="/author/status/200"><time></time></a></article></main>';
     expect(readXPosts()[0]).toMatchObject({
       id: "200",
       author: "author",
       text: "",
       html: "",
     });
+  });
+
+  test("does not assign a post ID when its own links disagree", () => {
+    document.body.innerHTML =
+      '<main data-testid="primaryColumn"><article data-testid="tweet"><a href="/author/status/200"><time></time></a><div data-testid="tweetText">Uncertain text</div><a href="/author/status/201/analytics">Views</a></article></main>';
+
+    expect(readXPosts()).toEqual([]);
   });
 });
 
@@ -201,45 +207,88 @@ describe("X archive assembly", () => {
   });
 });
 
-describe("thread boundaries", () => {
-  test("keeps the author's connected run and excludes their later replies to readers", () => {
-    document.body.innerHTML = `<main data-testid="primaryColumn">${post("199", "Author", "Beginning")}${post("200", "author", "Selected post")}${post("201", "author", "Continuation")}${post("202", "reader", "A question")}${post("203", "author", "A reply to the reader")}</main>`;
-    const result = selectXThread(readXPosts(), parseXTarget(location.href)!);
-    expect(result.posts.map((entry) => entry.id)).toEqual([
+describe("foreground capture", () => {
+  test.each(["", "/analytics", "/photo/1"])(
+    "matches the requested post via its own %s link without a linked timestamp",
+    async (suffix) => {
+      document.body.innerHTML = `<main data-testid="primaryColumn"><article data-testid="tweet"><a href="https://[/author/status/999"><time></time></a><time>Time as plain text</time><a href="/author/status/200${suffix}">Post control</a><div data-testid="tweetText">Requested body</div></article>${post("201", "reader", "Loaded reply")}</main>`;
+
+      const result = await captureXPage({ timeoutMs: 0 });
+
+      expect(result.metadata.x.posts.map(({ id }) => id)).toEqual([
+        "200",
+        "201",
+      ]);
+      expect(result.text).toBe("Requested body\n\n---\n\nLoaded reply");
+      expect(window.scrollTo).not.toHaveBeenCalled();
+    },
+  );
+
+  test("saves the loaded conversation without scrolling or waiting for replies", async () => {
+    document.body.innerHTML = `<aside>${post("205", "side", "Sidebar post")}</aside><main data-testid="primaryColumn">${post("198", "other", "Earlier unrelated post")}${post("199", "Author", "Beginning")}${post("200", "author", 'Selected post <span role="progressbar"></span>')}${post("201", "author", "Continuation")}${post("202", "reader", "A question")}${post("203", "author", "A reply to the reader")}<div role="progressbar"></div></main>`;
+
+    const result = await captureXPage();
+
+    expect(result.metadata.capture.status).toBe("complete");
+    expect(result.metadata.x.posts.map((entry) => entry.id)).toEqual([
       "199",
       "200",
       "201",
+      "202",
+      "203",
     ]);
-    expect(result.boundaryFound).toBe(true);
+    expect(result.text).toContain("A question");
+    expect(result.text).not.toMatch(/Earlier unrelated post|Sidebar post/);
+    expect(window.scrollTo).not.toHaveBeenCalled();
+    expect(window.scrollBy).not.toHaveBeenCalled();
   });
 
-  test("does not count a loading or missing continuation as a known boundary", () => {
-    document.body.innerHTML = `<main data-testid="primaryColumn">${post("200", "author", "Selected post")}<div role="progressbar"></div></main>`;
-    expect(
-      selectXThread(readXPosts(), parseXTarget(location.href)!).boundaryFound,
-    ).toBe(false);
-  });
-});
-
-describe("foreground capture", () => {
-  test("collects a virtualized author thread and excludes later author conversations", async () => {
+  test("saves available text if an inline expansion stays on screen", async () => {
     vi.useFakeTimers();
-    document.body.innerHTML = `<main data-testid="primaryColumn">${post("200", "author", "Beginning")}${post("201", "author", "Part two")}</main>`;
-    let scrolls = 0;
-    vi.mocked(window.scrollTo).mockImplementation(() => {
-      if (++scrolls === 2)
-        document.body.innerHTML = `<main data-testid="primaryColumn">${post("201", "author", "Part two")}${post("202", "author", "Part three")}${post("203", "reader", "Question")}${post("204", "author", "A reply")}</main>`;
-    });
+    document.body.innerHTML = `<main data-testid="primaryColumn">${post("200", "author", 'Loaded text <button data-testid="tweet-text-show-more-link">Show more</button>')}</main>`;
+    const expand = vi.fn();
+    document.querySelector("button")!.addEventListener("click", expand);
+
     const pending = captureXPage();
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(350);
     const result = await pending;
+
+    expect(expand).toHaveBeenCalledTimes(1);
     expect(result.metadata.capture.status).toBe("complete");
-    expect(result.metadata.x.posts.map((entry) => entry.id)).toEqual([
+    expect(result.text).toBe("Loaded text");
+  });
+
+  test("recovers a scrolled-out original post and keeps replies already read", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(window, "scrollY", "get").mockReturnValue(2_000);
+    document.body.innerHTML = `<main data-testid="primaryColumn">${post("203", "reader", "Reply already read")}</main>`;
+    vi.mocked(window.scrollTo).mockImplementation((options) => {
+      if (typeof options === "object" && options.top === 0) {
+        document.querySelector("main")!.innerHTML =
+          post("200", "author", "Original post") +
+          post("201", "reader", "Reply near the top");
+      }
+    });
+
+    const pending = captureXPage();
+    await vi.advanceTimersByTimeAsync(350);
+    const result = await pending;
+
+    expect(result.metadata.x.posts.map(({ id }) => id)).toEqual([
       "200",
       "201",
-      "202",
+      "203",
     ]);
-    expect(result.text).not.toContain("A reply");
+    expect(window.scrollTo).toHaveBeenCalledTimes(2);
+    expect(window.scrollTo).toHaveBeenNthCalledWith(1, {
+      top: 0,
+      behavior: "instant",
+    });
+    expect(window.scrollTo).toHaveBeenNthCalledWith(2, {
+      left: 0,
+      top: 2_000,
+      behavior: "instant",
+    });
   });
 
   test("captures a full article body and inline images without engagement or upsell text", async () => {
@@ -263,12 +312,17 @@ describe("foreground capture", () => {
     );
   });
 
-  test("returns partial when it cannot establish a thread boundary", async () => {
+  test("fails promptly if the requested post appears only in a reply's links and quotes", async () => {
     vi.useFakeTimers();
-    document.body.innerHTML = `<main data-testid="primaryColumn">${post("200", "author", "Beginning")}</main>`;
-    const pending = captureXPage({ timeoutMs: 1_000 });
-    await vi.advanceTimersByTimeAsync(1_100);
-    expect((await pending).metadata.capture.status).toBe("partial");
+    document.body.innerHTML = `<main data-testid="primaryColumn"><article data-testid="tweet"><a href="/reader/status/201/analytics">Reply views</a><div data-testid="tweetText">Read <a href="/author/status/200/analytics">these stats</a></div><div data-testid="card.wrapper"><a href="/author/status/200">Post preview</a></div><div role="link"><a href="/author/status/200/photo/1">Quoted image</a></div>${post("200", "author", "Nested quoted post")}</article></main>`;
+    expect(readXPosts().map(({ id }) => id)).toEqual(["201"]);
+    const result = expect(captureXPage()).rejects.toThrow(
+      "Karakeep couldn’t match the post in the address bar to the page",
+    );
+    await vi.advanceTimersByTimeAsync(5_000);
+    await result;
+    expect(window.scrollTo).not.toHaveBeenCalled();
+    expect(window.scrollBy).not.toHaveBeenCalled();
   });
 
   test("captures a direct article focus view without a tweet wrapper", async () => {

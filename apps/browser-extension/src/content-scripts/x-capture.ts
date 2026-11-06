@@ -13,8 +13,6 @@ export interface XCapturedPost {
   html: string;
   links: { url: string; sourcePostId: string }[];
   images: { url: string; alt: string; sourcePostId: string }[];
-  continues?: boolean;
-  replyCount?: number;
   articleTitle?: string;
 }
 
@@ -45,7 +43,6 @@ export interface XCaptureResult {
 
 export interface XCaptureOptions {
   signal?: AbortSignal;
-  onProgress?: (progress: { label: string; postCount: number }) => void;
   timeoutMs?: number;
 }
 
@@ -192,8 +189,9 @@ function isQuoted(element: Element, post: Element): boolean {
     parent = parent.parentElement
   ) {
     if (
-      parent.matches('[role="link"]:not(a)') &&
-      parent.querySelector('a[href*="/status/"]')
+      parent.matches('[data-testid="tweet"]') ||
+      (parent.matches('[role="link"]:not(a)') &&
+        parent.querySelector('a[href*="/status/"]'))
     )
       return true;
   }
@@ -312,6 +310,41 @@ function cleanContent(
   };
 }
 
+function readXPostTarget(element: Element): XTarget | null {
+  if (element.parentElement?.closest('[data-testid="tweet"]')) return null;
+
+  const matches = new Map<string, XTarget>();
+  for (const link of element.querySelectorAll(
+    'a[href*="/status/"], a[href*="/article/"]',
+  )) {
+    if (
+      isQuoted(link, element) ||
+      link.closest(
+        '[data-testid="tweetText"], [data-testid="card.wrapper"], [data-testid="twitterArticleRichTextView"]',
+      )
+    ) {
+      continue;
+    }
+    const url = getHttpUrl(link.getAttribute("href"), location.href);
+    const target = url && parseXTarget(url.href);
+    if (!url || !target) continue;
+    const postLink =
+      /^\/\w+\/status\/\d+(?:\/(?:analytics|(?:photo|video)\/\d+))?\/?$/.test(
+        url.pathname,
+      );
+    if (postLink || link.querySelector("time")) {
+      matches.set(target.id, target);
+    }
+  }
+  if (matches.size > 1) return null;
+  return (
+    matches.values().next().value ??
+    (element.matches('[data-testid="twitterArticleReadView"]')
+      ? parseXTarget(location.href)
+      : null)
+  );
+}
+
 export function readXPosts(root: ParentNode = document): XCapturedPost[] {
   const posts: XCapturedPost[] = [];
   const column = root.querySelector('[data-testid="primaryColumn"]') ?? root;
@@ -323,15 +356,7 @@ export function readXPosts(root: ParentNode = document): XCapturedPost[] {
     if (article) elements.push(article);
   }
   for (const element of elements) {
-    const time = Array.from(element.querySelectorAll("time")).find(
-      (candidate) => !isQuoted(candidate, element),
-    );
-    const permalink = time?.closest("a")?.getAttribute("href");
-    const target = permalink
-      ? parseXTarget(new URL(permalink, location.href).href)
-      : element.matches('[data-testid="twitterArticleReadView"]')
-        ? parseXTarget(location.href)
-        : null;
+    const target = readXPostTarget(element);
     if (target && !target.author) {
       const authorLink = column
         .querySelector('[data-testid="User-Name"] a[href]')
@@ -342,9 +367,9 @@ export function readXPosts(root: ParentNode = document): XCapturedPost[] {
       target.author = author ?? "unknown";
     }
     if (!target?.author) continue;
-    const richText = element.querySelector(
-      '[data-testid="twitterArticleRichTextView"]',
-    );
+    const richText = Array.from(
+      element.querySelectorAll('[data-testid="twitterArticleRichTextView"]'),
+    ).find((candidate) => !isQuoted(candidate, element));
     const content =
       richText ??
       Array.from(element.querySelectorAll('[data-testid="tweetText"]')).find(
@@ -398,14 +423,6 @@ export function readXPosts(root: ParentNode = document): XCapturedPost[] {
           `<figure><img src="${escapeHtml(image.url)}" alt="${escapeHtml(image.alt)}"></figure>`,
       )
       .join("");
-    const avatar = element.querySelector('[data-testid="Tweet-User-Avatar"]');
-    const connector = avatar?.nextElementSibling;
-    const connectorStyle = connector ? getComputedStyle(connector) : null;
-    const replyLabel =
-      element
-        .querySelector('[data-testid="reply"]')
-        ?.getAttribute("aria-label") ?? "";
-    const replyMatch = /^(\d+)\s/.exec(replyLabel);
     posts.push({
       id: target.id,
       url: target.url,
@@ -414,14 +431,15 @@ export function readXPosts(root: ParentNode = document): XCapturedPost[] {
       html: richText ? mediaHtml + cleaned.html : cleaned.html + mediaHtml,
       links,
       images,
-      continues:
-        connectorStyle?.width === "2px" && connectorStyle.flexGrow === "1",
-      ...(replyMatch ? { replyCount: Number(replyMatch[1]) } : {}),
       ...(richText
         ? {
             articleTitle:
-              element
-                .querySelector('[data-testid="twitter-article-title"]')
+              Array.from(
+                element.querySelectorAll(
+                  '[data-testid="twitter-article-title"]',
+                ),
+              )
+                .find((candidate) => !isQuoted(candidate, element))
                 ?.textContent?.trim() ?? "Article",
           }
         : {}),
@@ -430,40 +448,14 @@ export function readXPosts(root: ParentNode = document): XCapturedPost[] {
   return posts;
 }
 
-export function selectXThread(
-  posts: XCapturedPost[],
-  target: XTarget,
-): {
-  posts: XCapturedPost[];
-  boundaryFound: boolean;
-} {
-  const requested = posts.findIndex((post) => post.id === target.id);
-  if (requested === -1) return { posts: [], boundaryFound: false };
-  const author = posts[requested].author.toLowerCase();
-  let start = requested;
-  while (start > 0 && posts[start - 1].author.toLowerCase() === author) start--;
-  let end = requested + 1;
-  while (end < posts.length && posts[end].author.toLowerCase() === author)
-    end++;
-  return { posts: posts.slice(start, end), boundaryFound: end < posts.length };
-}
-
 export async function captureXPage(
   options: XCaptureOptions = {},
 ): Promise<XCaptureResult> {
   const target = parseXTarget(location.href);
   if (!target)
     throw new Error("Open an X post or article before capturing it.");
-  const started = Date.now();
-  const deadline = started + (options.timeoutMs ?? 60_000);
-  const scroll = { x: window.scrollX, y: window.scrollY };
-  const observed = new Map<string, XCapturedPost>();
-  const order: string[] = [];
-  let captured: XCapturedPost[] = [];
-  let lastChange = started;
-  let previousSignature = "";
-  let stablePasses = 0;
-  let reason = "X did not expose the end of this thread.";
+
+  const deadline = Date.now() + (options.timeoutMs ?? 5_000);
   const wait = () =>
     new Promise<void>((resolve, reject) => {
       options.signal?.throwIfAborted();
@@ -471,52 +463,96 @@ export async function captureXPage(
         clearTimeout(timer);
         reject(new Error("Capture cancelled."));
       };
-      const timer = setTimeout(() => {
-        options.signal?.removeEventListener("abort", onAbort);
-        resolve();
-      }, 350);
+      const timer = setTimeout(
+        () => {
+          options.signal?.removeEventListener("abort", onAbort);
+          resolve();
+        },
+        Math.min(350, Math.max(0, deadline - Date.now())),
+      );
       options.signal?.addEventListener("abort", onAbort, { once: true });
     });
+
+  let restoreScroll: ScrollToOptions | undefined;
+  let loadedReplies: XCapturedPost[] = [];
   try {
-    window.scrollTo(0, 0);
-    await wait();
-    while (Date.now() < deadline) {
+    while (true) {
       options.signal?.throwIfAborted();
       const column =
         document.querySelector('[data-testid="primaryColumn"]') ??
         document.querySelector('[data-testid="twitterArticleReadView"]');
-      if (!column) {
+      if (column) {
+        const posts = readXPosts();
+        const requested = posts.findIndex((post) => post.id === target.id);
+        const main = posts[requested];
         if (
-          document.querySelector(
-            'input[autocomplete="username"],a[href="/login"],a[href="/i/flow/login"]',
-          )
+          !main &&
+          target.kind === "post" &&
+          posts.length &&
+          !restoreScroll &&
+          window.scrollY > 0
         ) {
-          throw new Error("Sign into X before capturing this page.");
+          restoreScroll = {
+            left: window.scrollX,
+            top: window.scrollY,
+            behavior: "instant",
+          };
+          loadedReplies = posts.filter(
+            (post) => BigInt(post.id) > BigInt(target.id),
+          );
+          window.scrollTo({ top: 0, behavior: "instant" });
+          await wait();
+          continue;
         }
-        await wait();
-        continue;
-      }
-      const current = readXPosts();
-      for (let index = 0; index < current.length; index++) {
-        const post = current[index];
-        if (!observed.has(post.id)) {
-          const next = current
-            .slice(index + 1)
-            .find((candidate) => order.includes(candidate.id));
-          if (next) order.splice(order.indexOf(next.id), 0, post.id);
-          else order.push(post.id);
+        if (main?.articleTitle && main.text.trim()) {
+          return assembleXCapture(target, [main], {
+            kind: "article",
+            title: main.articleTitle,
+            status: "complete",
+          });
         }
-        const prior = observed.get(post.id);
-        if (!prior || post.text.length >= prior.text.length)
-          observed.set(post.id, post);
-      }
-      const selection = selectXThread(
-        order.map((id) => observed.get(id)!),
-        target,
-      );
-      captured = selection.posts;
-      const main = captured.find((post) => post.id === target.id);
-      if (!main) {
+        if (main && target.kind === "post" && !main.articleTitle) {
+          let start = requested;
+          while (
+            start > 0 &&
+            posts[start - 1].author.toLowerCase() === main.author.toLowerCase()
+          )
+            start--;
+          const loaded = [...loadedReplies, ...posts.slice(start)];
+          const includedIds = new Set(loaded.map((post) => post.id));
+          let expanded = false;
+          for (const element of column.querySelectorAll(
+            '[data-testid="tweet"]',
+          )) {
+            const id = readXPostTarget(element)?.id;
+            if (!id || !includedIds.has(id)) continue;
+            const expansion = element.querySelector<HTMLElement>(
+              '[data-testid="tweet-text-show-more-link"]',
+            );
+            if (expansion && !expansion.closest('a[href], [role="link"]')) {
+              expansion.click();
+              expanded = true;
+            }
+          }
+          if (expanded) {
+            await wait();
+            options.signal?.throwIfAborted();
+            const updated = new Map(
+              readXPosts().map((post) => [post.id, post]),
+            );
+            return assembleXCapture(
+              target,
+              loaded.map((post) => {
+                const current = updated.get(post.id);
+                return current && current.text.length >= post.text.length
+                  ? current
+                  : post;
+              }),
+              { status: "complete" },
+            );
+          }
+          return assembleXCapture(target, loaded, { status: "complete" });
+        }
         if (
           column.querySelector(
             '[data-testid="error-detail"], [data-testid="emptyState"]',
@@ -526,85 +562,21 @@ export async function captureXPage(
             "X could not load this post. Reload the page and try again.",
           );
         }
-        if (current.length) window.scrollBy(0, window.innerHeight * 0.6);
-        await wait();
-        continue;
+      } else if (
+        document.querySelector(
+          'input[autocomplete="username"],a[href="/login"],a[href="/i/flow/login"]',
+        )
+      ) {
+        throw new Error("Sign into X before capturing this page.");
       }
-      options.onProgress?.({
-        label: main.articleTitle ? "Capturing article…" : "Capturing thread…",
-        postCount: captured.length,
-      });
-      const includedIds = new Set(captured.map((post) => post.id));
-      const includedElements = Array.from(
-        column.querySelectorAll<HTMLElement>('[data-testid="tweet"]'),
-      ).filter((element) => {
-        const time = Array.from(element.querySelectorAll("time")).find(
-          (candidate) => !isQuoted(candidate, element),
+      if (Date.now() >= deadline)
+        throw new Error(
+          "Karakeep couldn’t match the post in the address bar to the page. Bring it into view and try again.",
         );
-        const url = time?.closest("a")?.getAttribute("href");
-        return url
-          ? includedIds.has(
-              parseXTarget(new URL(url, location.href).href)?.id ?? "",
-            )
-          : false;
-      });
-      const expansion = includedElements
-        .flatMap((element) =>
-          Array.from(
-            element.querySelectorAll<HTMLElement>(
-              '[data-testid="tweet-text-show-more-link"]',
-            ),
-          ),
-        )
-        .find((element) => !element.closest('[role="link"]'));
-      if (expansion) {
-        expansion.click();
-        await wait();
-        continue;
-      }
-      const signature = captured
-        .map(
-          (post) =>
-            `${post.id}:${post.text.length}:${post.images.length}:${post.links.length}`,
-        )
-        .join(",");
-      if (signature !== previousSignature) {
-        previousSignature = signature;
-        lastChange = Date.now();
-        stablePasses = 0;
-      } else stablePasses++;
-      const loading = includedElements.some((element) =>
-        element.querySelector('[role="progressbar"]'),
-      );
-      const last = captured[captured.length - 1];
-      const article = main.articleTitle && main.text.trim().length > 0;
-      const boundary = selection.boundaryFound || last.replyCount === 0;
-      if (!loading && stablePasses >= 2 && (article || boundary)) {
-        return assembleXCapture(target, article ? [main] : captured, {
-          status: "complete",
-          ...(article ? { kind: "article", title: main.articleTitle } : {}),
-        });
-      }
-      if (captured.length >= 500) {
-        reason = "This thread exceeded the 500-post capture limit.";
-        break;
-      }
-      if (Date.now() - lastChange > 8_000 && !loading) break;
-      const lastElement = includedElements[includedElements.length - 1];
-      if (lastElement) {
-        const bottom =
-          lastElement.getBoundingClientRect().bottom + window.scrollY;
-        window.scrollTo(0, Math.max(0, bottom - window.innerHeight * 0.4));
-      } else window.scrollBy(0, window.innerHeight * 0.75);
       await wait();
     }
-    if (!captured.length)
-      throw new Error(
-        "X did not load any content to capture. Reload the page and try again.",
-      );
-    return assembleXCapture(target, captured, { status: "partial", reason });
   } finally {
-    window.scrollTo(scroll.x, scroll.y);
+    if (restoreScroll) window.scrollTo(restoreScroll);
   }
 }
 

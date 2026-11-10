@@ -78,6 +78,30 @@ and the generated specification describe the binary attachment behavior.
 
 ## Validation
 
+### Floating note window (2026-11-10)
+
+The New Note menu action presents the existing `CaptureView` in a titled,
+closable `NSWindow`. The window uses AppKit’s floating level and stays visible
+when the app deactivates. Both presentations use the same draft model, and
+switching presentations keeps one editor visible. Reopening the floating window
+restores its position for the running session.
+
+Checked the [window level](https://developer.apple.com/documentation/appkit/nswindow/level-swift.property)
+and [deactivation behavior](https://developer.apple.com/documentation/appkit/nswindow/hidesondeactivate)
+against Apple’s documentation and the macOS 26.2 SDK. On macOS 15.7.4 with Swift
+6.2.4, a native check using a synthetic draft verified the New Note action,
+composer size and focus, visibility after another app became active, reopening
+at a moved position, and draft continuity when switching to the popover.
+The Swift suite and release build passed. Full-screen Spaces were outside this
+check.
+
+Command-click on the status item uses the same floating window action. Verified
+the [AppKit modifier flags](https://developer.apple.com/documentation/appkit/nsevent/modifierflags-swift.property)
+against the macOS 26.2 SDK. With Swift 6.2.4 on macOS 15.7.4, synthetic AppKit
+mouse events sent to the status view exercised regular click and Command-click,
+including switching from an open popover. System-level click delivery was
+outside this check.
+
 ### Saved API-key indicator (2026-11-05)
 
 Settings now shows masked dots when the configured server has a saved Keychain

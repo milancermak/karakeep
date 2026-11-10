@@ -17,6 +17,7 @@ struct KarakeepCaptureApp {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
   private var statusItem: NSStatusItem!
   private let popover = NSPopover()
+  private var captureWindow: NSWindow?
   private var settingsWindow: NSWindow?
   private var model: AppModel!
 
@@ -46,14 +47,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
       button.toolTip = "Karakeep Capture"
       let drop = StatusDropView(frame: button.bounds)
       drop.autoresizingMask = [.width, .height]
-      drop.clicked = { [weak self] right in
+      drop.clicked = { [weak self] click in
         guard let self else { return }
-        if right {
+        switch click {
+        case .menu:
           self.showMenu()
-        } else if self.popover.isShown {
-          self.popover.performClose(nil)
-        } else {
-          self.showCapture()
+        case .floating:
+          self.showFloatingCapture()
+        case .primary:
+          if self.popover.isShown {
+            self.popover.performClose(nil)
+          } else {
+            self.showCapture()
+          }
         }
       }
       drop.receivedFiles = { [weak self] urls in
@@ -98,8 +104,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     return true
   }
 
-  @objc private func showCapture() {
+  private func showCapture() {
     guard let button = statusItem.button else { return }
+    captureWindow?.close()
     model.showingHistory = false
     NSApp.activate(ignoringOtherApps: true)
     if !popover.isShown {
@@ -107,6 +114,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
     popover.contentViewController?.view.window?.makeKey()
     focusEditor(in: popover.contentViewController?.view)
+  }
+
+  @objc private func showFloatingCapture() {
+    popover.performClose(nil)
+    model.showingHistory = false
+    if captureWindow == nil {
+      let window = NSWindow(
+        contentViewController: NSHostingController(
+          rootView: CaptureView(
+            model: model, dismiss: { [weak self] in self?.captureWindow?.close() })))
+      window.title = "New Note"
+      window.styleMask = [.titled, .closable]
+      window.level = .floating
+      window.hidesOnDeactivate = false
+      window.isReleasedWhenClosed = false
+      window.center()
+      captureWindow = window
+    }
+    NSApp.activate(ignoringOtherApps: true)
+    captureWindow?.makeKeyAndOrderFront(nil)
+    focusEditor(in: captureWindow?.contentView)
   }
 
   private func focusEditor(in view: NSView?) {
@@ -149,7 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     popover.performClose(nil)
     let menu = NSMenu()
     for (title, action, key) in [
-      ("New Note", #selector(showCapture), "n"),
+      ("New Note", #selector(showFloatingCapture), "n"),
       ("Recent Notes", #selector(showRecent), ""),
       ("Upload Last Screenshot", #selector(uploadScreenshot), ""),
     ] {
@@ -187,8 +215,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     let menu = NSMenu()
     let appItem = NSMenuItem()
     let app = NSMenu()
-    app.addItem(withTitle: "New Note", action: #selector(showCapture), keyEquivalent: "n").target =
-      self
+    app.addItem(withTitle: "New Note", action: #selector(showFloatingCapture), keyEquivalent: "n")
+      .target = self
     app.addItem(withTitle: "Recent Notes", action: #selector(showRecent), keyEquivalent: "")
       .target = self
     app.addItem(.separator())
@@ -214,7 +242,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 }
 
 final class StatusDropView: NSView {
-  var clicked: ((Bool) -> Void)?
+  enum Click { case primary, menu, floating }
+
+  var clicked: ((Click) -> Void)?
   var receivedFiles: (([URL]) -> Bool)?
   var canDrop: (() -> Bool)?
   override init(frame frameRect: NSRect) {
@@ -229,14 +259,22 @@ final class StatusDropView: NSView {
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
   override func mouseDown(with event: NSEvent) {}
   override func rightMouseDown(with event: NSEvent) {}
-  override func mouseUp(with event: NSEvent) { clicked?(event.modifierFlags.contains(.control)) }
-  override func rightMouseUp(with event: NSEvent) { clicked?(true) }
+  override func mouseUp(with event: NSEvent) {
+    if event.modifierFlags.contains(.control) {
+      clicked?(.menu)
+    } else if event.modifierFlags.contains(.command) {
+      clicked?(.floating)
+    } else {
+      clicked?(.primary)
+    }
+  }
+  override func rightMouseUp(with event: NSEvent) { clicked?(.menu) }
   override func accessibilityPerformPress() -> Bool {
-    clicked?(false)
+    clicked?(.primary)
     return true
   }
   override func accessibilityPerformShowMenu() -> Bool {
-    clicked?(true)
+    clicked?(.menu)
     return true
   }
   override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {

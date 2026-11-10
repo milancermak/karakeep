@@ -36,6 +36,8 @@ authenticated requests do not follow redirects.
 ## Capture
 
 - Click the menu bar Karakeep icon, type, attach files, and press Save.
+- Command-click the menu bar icon or choose **New Note** from its right-click menu
+  to open the same draft in a movable window above other apps on the current desktop.
 - Drop one or more files onto the icon to open the same composer with those files.
 - Files and images can also be dropped or pasted into the editor. Clipboard
   images are attached as PNG files.
